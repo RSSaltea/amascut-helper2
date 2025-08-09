@@ -60,22 +60,47 @@ const RESPONSES = {
 };
 
 function updateUI(key) {
-  const order = RESPONSES[key].split(" > ");
+  const order = RESPONSES[key].split(" > "); // e.g., ["Range","Magic","Melee"]
   const rows = document.querySelectorAll("#spec tr");
   rows.forEach((row, i) => {
+    const role = order[i] || "";
     const cell = row.querySelector("td");
-    if (cell) cell.textContent = order[i] || "";
-    row.classList.toggle("selected", i === 0);
+    if (cell) cell.textContent = role;
+
+    // reveal rows 2 & 3 once we have a callout
+    row.style.display = ""; // unhide all rows
+    applyRoleClass(row, role);
+    row.classList.toggle("selected", i === 0); // keep top emphasis on first in sequence
   });
   log(`✅ ${RESPONSES[key]}`);
 }
 
 function resetUI() {
   const rows = document.querySelectorAll("#spec tr");
-  if (rows[0]?.querySelector("td")) rows[0].querySelector("td").textContent = "Waiting..";
-  if (rows[1]?.querySelector("td")) rows[1].querySelector("td").textContent = "";
-  if (rows[2]?.querySelector("td")) rows[2].querySelector("td").textContent = "";
-  rows.forEach((r, i) => r.classList.toggle("selected", i === 0));
+
+  // first row visible & neutral
+  if (rows[0]) {
+    const c0 = rows[0].querySelector("td");
+    if (c0) c0.textContent = "Waiting..";
+    rows[0].style.display = "";
+    rows[0].classList.remove("role-range", "role-magic", "role-melee");
+    rows[0].classList.add("selected");
+  }
+
+  // hide rows 2 and 3 until a callout happens
+  for (let i = 1; i < rows.length; i++) {
+    const c = rows[i].querySelector("td");
+    if (c) c.textContent = "";
+    rows[i].style.display = "none";
+    rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected");
+  }
+}
+
+function applyRoleClass(row, role) {
+  row.classList.remove("role-range", "role-magic", "role-melee");
+  if (role === "Range") row.classList.add("role-range");
+  else if (role === "Magic") row.classList.add("role-magic");
+  else if (role === "Melee") row.classList.add("role-melee");
 }
 
 // draw a box so we know the chatbox is found
