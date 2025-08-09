@@ -1,18 +1,9 @@
-// script.js
-A1lib.identifyApp("appconfig.json");
+/* script.js — Amascut Helper */
 
-// ---------- tiny logger ----------
-function log(msg) {
-  console.log(msg);
-  const out = document.getElementById("output");
-  if (!out) return;
-  const d = document.createElement("div");
-  d.textContent = msg;
-  out.prepend(d);
-  while (out.childElementCount > 60) out.removeChild(out.lastChild);
+// --- Alt1 app identify -------------------------------------------------------
+if (window.A1lib) {
+  A1lib.identifyApp("appconfig.json");
 }
-
-// alt1 install fallback
 if (window.alt1) {
   alt1.identifyAppUrl("./appconfig.json");
 } else {
@@ -21,89 +12,118 @@ if (window.alt1) {
     `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
 }
 
-// ---------- chat reader ----------
-const reader = new Chatbox.default();
+// --- tiny logger (goes into #output) -----------------------------------------
+function log(msg) {
+  const out = document.getElementById("output");
+  if (!out) return;
+  const d = document.createElement("div");
+  d.textContent = msg;
+  out.appendChild(d);
+  // keep last 200 lines
+  while (out.childElementCount > 200) out.removeChild(out.firstChild);
+}
 
-// bright lime NPC greens + a few general colors that stabilise OCR
-const LIME_GREENS = [
-  A1lib.mixColor(153,255,153), // <- the one we really care about
-  A1lib.mixColor(150,255,150),
-  A1lib.mixColor(156,255,156),
-  A1lib.mixColor(162,255,162)
-];
-const GENERAL_CHAT = [
-  A1lib.mixColor(255,255,255),
-  A1lib.mixColor(127,169,255),
-  A1lib.mixColor(67,188,188),
-  A1lib.mixColor(0,111,0),
-  A1lib.mixColor(0,255,0),
-  A1lib.mixColor(235,47,47)
-];
+// --- Logs panel controls (requires the HTML from previous step) --------------
+(function wireLogsPanel() {
+  const logsPanel = document.getElementById("logsPanel");
+  const toggleLogsBtn = document.getElementById("toggleLogs");
+  const scrollLogsBtn = document.getElementById("scrollLogs");
+  const outEl = document.getElementById("output");
+  if (toggleLogsBtn && logsPanel) {
+    toggleLogsBtn.addEventListener("click", () => {
+      logsPanel.classList.toggle("hidden");
+    });
+  }
+  if (scrollLogsBtn && outEl) {
+    scrollLogsBtn.addEventListener("click", () => {
+      outEl.scrollTop = outEl.scrollHeight;
+    });
+  }
+})();
 
-reader.readargs = {
-  colors: [...LIME_GREENS, ...GENERAL_CHAT],
-  backwards: true
-};
-
-// ---------- UI helpers ----------
+// --- UI helpers ---------------------------------------------------------------
 const RESPONSES = {
   weak:     "Range > Magic > Melee",
   grovel:   "Magic > Melee > Range",
   pathetic: "Melee > Range > Magic",
 };
 
-function roleToClass(role) {
-  const r = role.toLowerCase();
-  if (r.startsWith("range")) return "role-range";
-  if (r.startsWith("magic")) return "role-magic";
-  if (r.startsWith("melee")) return "role-melee";
-  return "";
-}
-
-// start with single row
-let fullShown = false;
-
-// render only first row (used before we know the call)
-function renderSingleRow(text, cssClass = "") {
+// ensure table starts with 1 row only
+function initTable() {
   const tbody = document.querySelector("#spec tbody");
   if (!tbody) return;
-  tbody.innerHTML = "";
-  const tr = document.createElement("tr");
-  tr.className = `selected ${cssClass}`.trim();
-  tr.innerHTML = `<td>${text}</td>`;
-  tbody.appendChild(tr);
+  tbody.innerHTML = `
+    <tr id="style1" class="selected"><td>Waiting for mech</td></tr>
+  `;
 }
 
-// render full 3-row table in correct order & colors
-function renderFull(order) {
+// create rows if not present (after we’ve got a match)
+function ensureThreeRows() {
   const tbody = document.querySelector("#spec tbody");
   if (!tbody) return;
-  tbody.innerHTML = "";
-  order.forEach((role, i) => {
-    const tr = document.createElement("tr");
-    tr.classList.add(roleToClass(role));
-    if (i === 0) tr.classList.add("selected");
-    tr.innerHTML = `<td>${role}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-// called whenever we know the key (weak/grovel/pathetic)
-function updateUI(key) {
-  const order = RESPONSES[key].split(" > ");
-  if (!fullShown) {
-    fullShown = true;
-    renderFull(order);
-  } else {
-    renderFull(order);
+  if (!document.getElementById("style2")) {
+    const tr2 = document.createElement("tr");
+    tr2.id = "style2";
+    tr2.innerHTML = "<td></td>";
+    tbody.appendChild(tr2);
   }
-  log(`✅ ${RESPONSES[key]}`);
+  if (!document.getElementById("style3")) {
+    const tr3 = document.createElement("tr");
+    tr3.id = "style3";
+    tr3.innerHTML = "<td></td>";
+    tbody.appendChild(tr3);
+  }
 }
 
-// initial table state
-renderSingleRow("Waiting for mech");
+function clearRoleClasses(tr) {
+  tr.classList.remove("role-range", "role-magic", "role-melee");
+}
 
-// optional box outline to confirm selection
+function applyRoleClass(tr, roleText) {
+  const r = (roleText || "").toLowerCase();
+  if (r.includes("range")) tr.classList.add("role-range");
+  if (r.includes("magic")) tr.classList.add("role-magic");
+  if (r.includes("melee")) tr.classList.add("role-melee");
+}
+
+function updateUI(key) {
+  if (!RESPONSES[key]) return;
+  ensureThreeRows();
+
+  const order = RESPONSES[key].split(" > "); // [Top, Mid, Bot]
+  const rows = [
+    document.getElementById("style1"),
+    document.getElementById("style2"),
+    document.getElementById("style3")
+  ].filter(Boolean);
+
+  rows.forEach((row, i) => {
+    const cell = row.querySelector("td");
+    if (!cell) return;
+    cell.textContent = order[i] || "";
+    row.classList.toggle("selected", i === 0);
+
+    // recolor background to match the text (Range/Magic/Melee)
+    clearRoleClasses(row);
+    applyRoleClass(row, cell.textContent);
+  });
+
+  log(`✔ ${RESPONSES[key]}`);
+}
+
+// --- Chatbox OCR wiring -------------------------------------------------------
+const reader = new Chatbox.default();
+
+// Text color set: narrow to the lime the boss speaks in + common whites
+const LIME = A1lib.mixColor(153, 255, 153);       // boss speech
+const WHITE = A1lib.mixColor(255, 255, 255);
+const PUBBLU = A1lib.mixColor(127, 169, 255);
+
+reader.readargs = {
+  colors: [LIME, WHITE, PUBBLU],
+  backwards: true
+};
+
 function showSelected(chat) {
   try {
     alt1.overLayRect(
@@ -115,69 +135,61 @@ function showSelected(chat) {
   } catch {}
 }
 
-// ---------- chat polling ----------
+// simple de-dup throttle
 let lastSig = "";
 let lastAt = 0;
 
-// removes the “Amascut says → ” style prefix from log lines if it appears
-function stripSaysPrefix(s) {
-  return s.replace(/^\s*\d{2}:\d{2}:\d{2}\]\s*/,'')    // drop leading [hh:mm:ss] if present
-          .replace(/^Amascut\s*says\s*→\s*/i, '')      // “Amascut says → ”
-          .replace(/^Amascut,\s*the\s*Devourer:\s*/i,''); // normal speaker label
+function findKeyInText(text) {
+  const t = text.toLowerCase();
+  if (t.includes(" grovel")) return "grovel";
+  if (t.includes(" pathetic")) return "pathetic";
+  if (t.includes(" weak")) return "weak";
+  return null;
 }
 
 function readChatbox() {
   let segs = [];
-  try { segs = reader.read() || []; } catch (e) {
-    log("⚠️ reader.read() failed; ensure Pixel permission.");
-    return;
-  }
+  try { segs = reader.read() || []; } catch { return; }
   if (!segs.length) return;
 
-  // Join as a single lowercased string for matching, but also keep a cleaned printable snippet
-  const texts = segs.map(s => (s.text || "").trim()).filter(Boolean);
-  if (!texts.length) return;
+  // Gather most recent ~8 lines, strip timestamps and names
+  const lines = segs
+    .map(s => (s.text || "").trim())
+    .filter(Boolean)
+    .map(t => t.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, "")) // remove [hh:mm:ss]
+    .map(t => t.replace(/^amascut,\s*the\s*devourer:\s*/i, "")); // remove speaker
 
-  const printable = stripSaysPrefix(texts[texts.length - 1]);
-  // only log short tail to avoid spam
-  log(printable);
+  const joined = (" " + lines.slice(-8).join(" ") + " ").toLowerCase();
+  let key = findKeyInText(joined);
+  if (!key) return;
 
-  const full = texts.join(" ").toLowerCase();
+  const now = Date.now();
+  const sig = key + "|" + joined.slice(-120);
+  if (sig === lastSig && (now - lastAt) < 1500) return; // skip dup spam
+  lastSig = sig; lastAt = now;
 
-  let key = null;
-  if (/\bgrovel\b/i.test(full)) key = "grovel";
-  else if (/\bpathetic\b/i.test(full)) key = "pathetic";
-  else if (/\bweak\b/i.test(full)) key = "weak";
-
-  if (key) {
-    const now = Date.now();
-    const sig = key + "|" + full.slice(-80);
-    // dedupe bursts
-    if (sig !== lastSig || (now - lastAt) > 1500) {
-      lastSig = sig;
-      lastAt = now;
-      updateUI(key);
-    }
-  }
+  // If this is the first ever match, expand from 1 row to 3 rows
+  ensureThreeRows();
+  updateUI(key);
 }
 
-// find chatbox then start polling
+// --- boot ---------------------------------------------------------------------
+initTable();
 setTimeout(() => {
-  const finder = setInterval(() => {
+  const h = setInterval(() => {
     try {
       if (reader.pos === null) {
-        log("🔍 finding chatbox...");
+        log("finding chatbox...");
         reader.find();
       } else {
-        clearInterval(finder);
-        // prefer the first found chat as the main one
+        clearInterval(h);
         reader.pos.mainbox = reader.pos.boxes[0];
-        log("✅ chatbox found");
+        log("chatbox found");
         showSelected(reader.pos);
         setInterval(readChatbox, 300);
       }
     } catch (e) {
-      log("⚠️ " + (e && e.message ? e.message : e));
+      log("⚠ " + (e && e.message ? e.message : e));
     }
-  }, 800);
+  }, 700);
 }, 50);
