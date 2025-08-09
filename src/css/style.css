@@ -84,6 +84,36 @@ div.headerTitle:after {
   border-bottom: 1px solid #3b2816;
 }
 
+/* header row: small Logs button on the left, title centered */
+.headerbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+#title {
+  flex: 1;
+  text-align: center;
+}
+
+/* smaller nis button variant for the Logs toggle */
+.nisbutton--sm {
+  height: 24px;
+  line-height: 24px;
+  font-size: 14px;
+  padding: 0 10px;
+}
+
+/* make the logs panel compact and visually “attached” to the button */
+.logs {
+  width: 220px;            /* smaller box */
+  margin-top: 6px;
+}
+.logs-body {
+  max-height: 90px;        /* shorter scroll area */
+}
+
+
 /* little scroll-to-bottom button */
 .log-scroll {
   all: unset;
