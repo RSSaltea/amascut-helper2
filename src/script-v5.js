@@ -60,32 +60,13 @@ const RESPONSES = {
 };
 
 function updateUI(key) {
-  const order = RESPONSES[key].split(" > "); // e.g., ["Range","Magic","Melee"]
+  const order = RESPONSES[key].split(" > ");
   const rows = document.querySelectorAll("#spec tr");
-
-  const roleClass = {
-    "Range": "role-range",
-    "Magic": "role-magic",
-    "Melee": "role-melee"
-  };
-
   rows.forEach((row, i) => {
     const cell = row.querySelector("td");
-    const label = order[i] || "";
-    if (cell) cell.textContent = label;
-
-    // wipe previous role classes
-    row.classList.remove("role-range", "role-magic", "role-melee");
-
-    // apply new role color if we have a label
-    if (label && roleClass[label]) {
-      row.classList.add(roleClass[label]);
-    }
-
-    // highlight the top row
+    if (cell) cell.textContent = order[i] || "";
     row.classList.toggle("selected", i === 0);
   });
-
   log(`✅ ${RESPONSES[key]}`);
 }
 
