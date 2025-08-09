@@ -50,14 +50,14 @@ function showSingleRow(text) {
     if (c0) c0.textContent = text;
     rows[0].style.display = "table-row";
     rows[0].classList.remove("role-range", "role-magic", "role-melee");
-    rows[0].classList.add("selected");
+    rows[0].classList.add("selected", "callout", "flash"); // <- added
   }
 
   for (let i = 1; i < rows.length; i++) {
     const c = rows[i].querySelector("td");
     if (c) c.textContent = "";
     rows[i].style.display = "none";
-    rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected");
+    rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected", "callout", "flash"); // <- ensure cleared
   }
 
   log(`✅ ${text}`);
@@ -68,12 +68,21 @@ function startCountdown(label, seconds) {
   if (resetTimerId) { clearTimeout(resetTimerId); resetTimerId = null; }
 
   let remaining = seconds;
-  showSingleRow(`${label} (${remaining})`);
 
+  function render() {
+    if (remaining > 1) {
+      showSingleRow(`${label} (${remaining})`);
+    } else if (remaining === 1) {
+      // show ALL CAPS without "(1)"
+      showSingleRow(label.toUpperCase());
+    }
+  }
+
+  render();
   startCountdown._interval = setInterval(() => {
     remaining -= 1;
-    if (remaining > 0) {
-      showSingleRow(`${label} (${remaining})`);
+    if (remaining >= 1) {
+      render();
     } else {
       clearInterval(startCountdown._interval);
       startCountdown._interval = null;
@@ -121,18 +130,22 @@ function updateUI(key) {
   if (rows[1]) rows[1].style.display = "table-row";
   if (rows[2]) rows[2].style.display = "table-row";
 
-  rows.forEach((row, i) => {
-    const role = order[i] || "";
-    const cell = row.querySelector("td");
-    if (cell) cell.textContent = role;
+rows.forEach((row, i) => {
+  const role = order[i] || "";
+  const cell = row.querySelector("td");
+  if (cell) cell.textContent = role;
 
-    row.classList.remove("role-range", "role-magic", "role-melee");
-    if (role === "Range") row.classList.add("role-range");
-    else if (role === "Magic") row.classList.add("role-magic");
-    else if (role === "Melee") row.classList.add("role-melee");
+  // clear any callout styling
+  row.classList.remove("callout", "flash");
 
-    row.classList.toggle("selected", i === 0);
-  });
+  // color + emphasis
+  row.classList.remove("role-range", "role-magic", "role-melee");
+  if (role === "Range") row.classList.add("role-range");
+  else if (role === "Magic") row.classList.add("role-magic");
+  else if (role === "Melee") row.classList.add("role-melee");
+
+  row.classList.toggle("selected", i === 0);
+});
 
   log(`✅ ${RESPONSES[key]}`);
 
@@ -150,7 +163,7 @@ function resetUI() {
     const c0 = rows[0].querySelector("td");
     if (c0) c0.textContent = "Waiting..";
     rows[0].style.display = "";
-    rows[0].classList.remove("role-range", "role-magic", "role-melee");
+    rows[0].classList.remove("role-range", "role-magic", "role-melee", "callout", "flash");
     rows[0].classList.add("selected");
   }
 
@@ -158,7 +171,7 @@ function resetUI() {
     const c = rows[i].querySelector("td");
     if (c) c.textContent = "";
     rows[i].style.display = "none";
-    rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected");
+    rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected", "callout", "flash");
   }
 }
 
@@ -200,20 +213,24 @@ function onAmascutLine(full, lineId) {
   lastSig = sig;
   lastAt = now;
 
-  if (key === "tear") {
-    startCountdown("Voke → Reflect", 6);
+if (key === "tear") {
+  // Voke → Reflect immediately, 6→1 countdown
+  startCountdown("Voke → Reflect", 6);
 
+  // After 6s finishes, wait 2s, then Barricade 31→1
+  countdownTimers.push(setTimeout(() => {
+    startCountdown("Barricade", 31);
+
+    // After the 31s countdown finishes, reset
     countdownTimers.push(setTimeout(() => {
-      startCountdown("Barricade", 8);
+      resetUI();
+      log("↺ UI reset");
+    }, 31000)); // 31s for Barricade countdown
 
-      countdownTimers.push(setTimeout(() => {
-        resetUI();
-        log("↺ UI reset");
-      }, 8000));
-    }, 8000)); // 6s + 2s pause
-  } else {
-    updateUI(key);
-  }
+  }, 8000)); // 6s (countdown) + 2s pause
+} else {
+  updateUI(key);
+}
 }
 
 // --------- Read loop ----------
