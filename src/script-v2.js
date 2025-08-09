@@ -15,13 +15,12 @@ if (window.alt1) {
 } else {
   const url = new URL("./appconfig.json", document.location.href).href;
   document.body.innerHTML =
-    Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.;
+    `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
 }
 
-let reader = new Chatbox.default();
+const reader = new Chatbox.default();
 
-// lime greens for Weak/Grovel/Pathetic
-let LIME_GREENS = [
+const LIME_GREENS = [
   A1lib.mixColor(145,255,145),
   A1lib.mixColor(148,255,148),
   A1lib.mixColor(150,255,150),
@@ -31,28 +30,18 @@ let LIME_GREENS = [
   A1lib.mixColor(162,255,162)
 ];
 
-// cyan sweep for boss name
-let CYAN_SWEEP = [];
-for (let r = 60; r <= 80; r += 2) {
-  for (let g = 120; g <= 140; g += 2) {
-    for (let b = 135; b <= 155; b += 2) {
-      CYAN_SWEEP.push(A1lib.mixColor(r, g, b));
-    }
-  }
-}
-
-// general chat colors for stability
-let GENERAL_CHAT = [
-  A1lib.mixColor(255,255,255),  
-  A1lib.mixColor(127,169,255),  
-  A1lib.mixColor(102,152,255),  
-  A1lib.mixColor(67,188,188),   
-  A1lib.mixColor(255,255,0),    
-  A1lib.mixColor(235,47,47),    
+// some general chat colours that help the OCR produce segments reliably
+const GENERAL_CHAT = [
+  A1lib.mixColor(255,255,255),  // white
+  A1lib.mixColor(127,169,255),  // public chat blue
+  A1lib.mixColor(102,152,255),  // drops blue
+  A1lib.mixColor(67,188,188),   // teal system-ish
+  A1lib.mixColor(255,255,0),    // yellow
+  A1lib.mixColor(235,47,47),    // red
 ];
 
 reader.readargs = {
-  colors: [...LIME_GREENS, ...CYAN_SWEEP, ...GENERAL_CHAT],
+  colors: [...LIME_GREENS, ...GENERAL_CHAT],
   backwards: true
 };
 
@@ -81,7 +70,7 @@ function updateUI(key) {
     if (cell) cell.textContent = order[i] || "";
     row.classList.toggle("selected", i === 0);
   });
-  log(🎯 UI set to: ${RESPONSES[key]});
+  log(`🎯 UI set to: ${RESPONSES[key]}`);
 }
 
 let lastSig = "";
@@ -116,7 +105,7 @@ function readChatbox() {
     if (sig !== lastSig || (now - lastAt) > 1500) {
       lastSig = sig;
       lastAt = now;
-      log(✅ matched ${key});
+      log(`✅ matched ${key}`);
       updateUI(key);
     }
   }
