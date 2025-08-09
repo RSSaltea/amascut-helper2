@@ -1,11 +1,7 @@
-/* ------------------------------------------------
- * Amascut Helper (no imports; works with your HTML)
- * ------------------------------------------------ */
-
 A1lib.identifyApp("appconfig.json");
 
-// --------- tiny logger ----------
 function log(msg) {
+  if (typeof SETTINGS !== "undefined" && !SETTINGS.logs) return;
   try {
     console.log(msg);
     const out = document.getElementById("output");
@@ -17,7 +13,6 @@ function log(msg) {
   } catch {}
 }
 
-// --------- Alt1 detection ----------
 if (window.alt1) {
   alt1.identifyAppUrl("./appconfig.json");
 } else {
@@ -25,11 +20,9 @@ if (window.alt1) {
   document.body.innerHTML = `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
 }
 
-// --------- De-dupe state ----------
 const seenLineIds = new Set();
-const seenLineQueue = []; // FIFO to keep memory small
+const seenLineQueue = [];
 
-// --------- Countdown management ----------
 let countdownTimers = [];
 let resetTimerId = null;
 
@@ -73,7 +66,6 @@ function startCountdown(label, seconds) {
     if (remaining > 1) {
       showSingleRow(`${label} (${remaining})`);
     } else if (remaining === 1) {
-      // show ALL CAPS without "(1)"
       showSingleRow(label.toUpperCase());
     }
   }
@@ -90,7 +82,6 @@ function startCountdown(label, seconds) {
   }, 1000);
 }
 
-// --------- Chat reader ----------
 const reader = new Chatbox.default();
 const NAME_RGB = [69, 131, 145];
 const TEXT_RGB = [153, 255, 153];
@@ -113,7 +104,6 @@ reader.readargs = {
   backwards: true
 };
 
-// --------- UI helpers ----------
 const RESPONSES = {
   weak:     "Range > Magic > Melee",
   grovel:   "Magic > Melee > Range",
@@ -135,10 +125,8 @@ function updateUI(key) {
     const cell = row.querySelector("td");
     if (cell) cell.textContent = role;
 
-    // clear any callout styling
     row.classList.remove("callout", "flash");
 
-    // color + emphasis
     row.classList.remove("role-range", "role-magic", "role-melee");
     if (role === "Range") row.classList.add("role-range");
     else if (role === "Magic") row.classList.add("role-magic");
@@ -161,7 +149,7 @@ function resetUI() {
 
   if (rows[0]) {
     const c0 = rows[0].querySelector("td");
-    if (c0) c0.textContent = "Waiting..";
+    if (c0) c0.textContent = "Waiting...";
     rows[0].style.display = "";
     rows[0].classList.remove("role-range", "role-magic", "role-melee", "callout", "flash");
     rows[0].classList.add("selected");
@@ -175,7 +163,6 @@ function resetUI() {
   }
 }
 
-// --------- Utilities ----------
 function firstNonWhiteColor(seg) {
   if (!seg.fragments) return null;
   for (const f of seg.fragments) {
@@ -184,15 +171,13 @@ function firstNonWhiteColor(seg) {
   return null;
 }
 
-// ==============================
-// Settings (UI + persistence)
-// ==============================
-
 const SETTINGS_DEFAULT = {
-  role: "Base",         // "DPS" | "Base"
-  bend: "Voke",         // "Voke" | "Immort"
-  scarabs: "Barricade", // "Barricade" | "Dive"
+  role: "Base",         
+  bend: "Voke",         
+  scarabs: "Barricade", 
+  logs: false           
 };
+
 
 function loadSettings() {
   try {
@@ -209,7 +194,6 @@ function saveSettings(s) {
 
 let SETTINGS = loadSettings();
 
-// inject minimal UI (cog + panel) without touching your HTML/CSS files
 (function injectSettingsUI(){
   const style = document.createElement("style");
   style.textContent = `
@@ -233,51 +217,61 @@ let SETTINGS = loadSettings();
 
   const panel = document.createElement("div");
   panel.className = "ah-panel";
-  panel.innerHTML = `
-    <div class="ah-row">
-      <label>Role</label>
-      <select id="ah-role">
-        <option value="DPS">DPS</option>
-        <option value="Base">Base</option>
-      </select>
-    </div>
-    <div class="ah-row">
-      <label><span class="ah-tip" title="How do you plan to deal with Bend the knee mechanic?">Bend the knee</span></label>
-      <select id="ah-bend">
-        <option value="Voke">Voke</option>
-        <option value="Immort">Immort</option>
-      </select>
-    </div>
-    <div class="ah-row">
-      <label><span class="ah-tip" title="How do you plan to deal with Scarabs?">Scarabs</span></label>
-      <select id="ah-scarabs">
-        <option value="Barricade">Barricade</option>
-        <option value="Dive">Dive</option>
-      </select>
-    </div>
-  `;
+panel.innerHTML = `
+  <div class="ah-row">
+    <label>Role</label>
+    <select id="ah-role">
+      <option value="DPS">DPS</option>
+      <option value="Base">Base</option>
+    </select>
+  </div>
+  <div class="ah-row">
+    <label><span class="ah-tip" title="How do you plan to deal with Bend the knee mechanic?">Bend the knee</span></label>
+    <select id="ah-bend">
+      <option value="Voke">Voke</option>
+      <option value="Immort">Immort</option>
+    </select>
+  </div>
+  <div class="ah-row">
+    <label><span class="ah-tip" title="How do you plan to deal with Scarabs?">Scarabs</span></label>
+    <select id="ah-scarabs">
+      <option value="Barricade">Barricade</option>
+      <option value="Dive">Dive</option>
+    </select>
+  </div>
+  <div class="ah-row">
+    <label>Logs</label>
+    <input type="checkbox" id="ah-logs">
+  </div>
+`;
   document.body.appendChild(panel);
 
-  // set initial values
-  panel.querySelector("#ah-role").value = SETTINGS.role;
-  panel.querySelector("#ah-bend").value = SETTINGS.bend;
-  panel.querySelector("#ah-scarabs").value = SETTINGS.scarabs;
+panel.querySelector("#ah-role").value = SETTINGS.role;
+panel.querySelector("#ah-bend").value = SETTINGS.bend;
+panel.querySelector("#ah-scarabs").value = SETTINGS.scarabs;
+panel.querySelector("#ah-logs").checked = SETTINGS.logs;
 
-  // events
   cog.addEventListener("click", () => {
     panel.style.display = panel.style.display === "none" ? "block" : "none";
   });
-  function updateFromUI(){
-    SETTINGS.role = panel.querySelector("#ah-role").value;
-    SETTINGS.bend = panel.querySelector("#ah-bend").value;
-    SETTINGS.scarabs = panel.querySelector("#ah-scarabs").value;
-    saveSettings(SETTINGS);
-    log(`⚙️ Settings → role=${SETTINGS.role}, bend=${SETTINGS.bend}, scarabs=${SETTINGS.scarabs}`);
+function updateFromUI(){
+  SETTINGS.role = panel.querySelector("#ah-role").value;
+  SETTINGS.bend = panel.querySelector("#ah-bend").value;
+  SETTINGS.scarabs = panel.querySelector("#ah-scarabs").value;
+  SETTINGS.logs = panel.querySelector("#ah-logs").checked;
+  saveSettings(SETTINGS);
+
+  if (!SETTINGS.logs) {
+    const out = document.getElementById("output");
+    if (out) out.innerHTML = "";
   }
+
+  log(`⚙️ Settings → role=${SETTINGS.role}, bend=${SETTINGS.bend}, scarabs=${SETTINGS.scarabs}, logs=${SETTINGS.logs}`);
+}
+
   panel.addEventListener("change", updateFromUI);
 })();
 
-// --------- Debouncer ----------
 let lastSig = "";
 let lastAt = 0;
 
@@ -292,10 +286,9 @@ function onAmascutLine(full, lineId) {
     }
   }
 
-  const raw = full;               // preserve case
-  const low = full.toLowerCase(); // helper for insensitive checks
+  const raw = full;               
+  const low = full.toLowerCase(); 
 
-  // ---- key detection (Weak is case-sensitive) ----
   let key = null;
   if (raw.includes("Grovel")) key = "grovel";
   else if (/\bWeak\b/.test(raw)) key = "weak";
@@ -303,25 +296,21 @@ function onAmascutLine(full, lineId) {
   else if (low.includes("tear them apart")) key = "tear";
   else if (low.includes("tumeken's heart delivered")) key = "barricadeHeart";
   else if (raw.includes("I WILL NOT BE SUBJUGATED")) key = "notSubjugated";
+  else if (raw.includes("Crondis... It should have never come to this")) key = "crondis";
+  else if (raw.includes("I'm sorry, Apmeken")) key = "apmeken";
+  else if (raw.includes("Forgive me, Het")) key = "het";
+  else if (raw.includes("Scabaras...")) key = "scabaras";
+
   if (!key) return;
 
-  // light debouncer by content signature
   const now = Date.now();
   const sig = key + "|" + raw.slice(-80);
   if (sig === lastSig && now - lastAt < 1200) return;
   lastSig = sig;
   lastAt = now;
 
-  // ==============================
-  // Settings-driven behavior
-  // ==============================
   if (key === "tear") {
-    // Decide first step (Bend the knee phase)
-    // - DPS + Voke       -> Voke Reflect (countdown)
-    // - DPS + Immort     -> do nothing
-    // - Base + Immort    -> Immortality (countdown)
-    // - Base + Voke      -> do nothing
-    let first = "none"; // "voke" | "immort" | "none"
+    let first = "none"; 
     if (SETTINGS.role === "DPS" && SETTINGS.bend === "Voke") first = "voke";
     else if (SETTINGS.role === "Base" && SETTINGS.bend === "Immort") first = "immort";
 
@@ -331,32 +320,31 @@ function onAmascutLine(full, lineId) {
       startCountdown("Voke → Reflect", 8);
     } else if (first === "immort") {
       startCountdown("Immortality", 8);
-    } // else none
+    } 
 
-// Scarabs follow after the first phase completes (or after 2s if none)
-const scarabDelayMs = (firstDuration ? (firstDuration + 2) : 2) * 1000;
+    const scarabDelayMs = (firstDuration ? (firstDuration + 2) : 2) * 1000;
 
-countdownTimers.push(setTimeout(() => {
-  if (SETTINGS.scarabs === "Barricade") {
-    // Base + Barricade → 18s, else 10s
-    const barricadeTime = (SETTINGS.role === "Base") ? 18 : 10;
-    startCountdown("Barricade", barricadeTime);
     countdownTimers.push(setTimeout(() => {
-      resetUI();
-      log("↺ UI reset");
-    }, barricadeTime * 1000));
-  } else {
-    // Dive: immediate, no countdown, reset after 8s
-    showSingleRow("Dive");
-    countdownTimers.push(setTimeout(() => {
-      resetUI();
-      log("↺ UI reset");
-    }, 8000));
-  }
-}, scarabDelayMs));
+      if (SETTINGS.scarabs === "Barricade") {
+        
+        const barricadeTime = (SETTINGS.role === "Base") ? 18 : 10;
+        startCountdown("Barricade", barricadeTime);
+        countdownTimers.push(setTimeout(() => {
+          resetUI();
+          log("↺ UI reset");
+        }, barricadeTime * 1000));
+      } else {
+
+        showSingleRow("Dive");
+        countdownTimers.push(setTimeout(() => {
+          resetUI();
+          log("↺ UI reset");
+        }, 8000));
+      }
+    }, scarabDelayMs));
 
   } else if (key === "barricadeHeart") {
-    // Tumeken's heart delivered → Barricade 12s (independent)
+
     startCountdown("Barricade", 12);
     countdownTimers.push(setTimeout(() => {
       resetUI();
@@ -364,17 +352,43 @@ countdownTimers.push(setTimeout(() => {
     }, 12000));
 
   } else if (key === "notSubjugated") {
-    // Instruction line, reset after 8s (independent)
+
     showSingleRow("Magic Prayer → Devo → Reflect → Melee Prayer");
     setTimeout(() => {
       resetUI();
       log("↺ UI reset");
     }, 8000);
 
+  } else if (key === "crondis") {
+    showSingleRow("Crondis (SE)");
+    setTimeout(() => {
+      resetUI();
+      log("↺ UI reset");
+    }, 6000);
+
+  } else if (key === "apmeken") {
+    showSingleRow("Apmeken (NW)");
+    setTimeout(() => {
+      resetUI();
+      log("↺ UI reset");
+    }, 6000);
+
+  } else if (key === "het") {
+    showSingleRow("Het (SW)");
+    setTimeout(() => {
+      resetUI();
+      log("↺ UI reset");
+    }, 6000);
+
+  } else if (key === "scabaras") {
+    showSingleRow("Scabaras (NE)");
+    setTimeout(() => {
+      resetUI();
+      log("↺ UI reset");
+    }, 6000);
+
   } else {
-    // Grovel/Weak/Pathetic depend on Role:
-    // - DPS  -> do nothing
-    // - Base -> normal 3-row behavior
+
     if (SETTINGS.role === "Base") {
       cancelCountdowns();
       updateUI(key);
@@ -384,7 +398,7 @@ countdownTimers.push(setTimeout(() => {
   }
 }
 
-// --------- Read loop ----------
+
 function readChatbox() {
   let segs = [];
   try { segs = reader.read() || []; }
@@ -421,7 +435,6 @@ function readChatbox() {
   }
 }
 
-// --------- Boot ----------
 resetUI();
 
 setTimeout(() => {
