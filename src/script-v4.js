@@ -26,6 +26,7 @@ const reader = new Chatbox.default();
 
 /* ---------- colors ---------- */
 const LIME_GREENS = [
+  A1lib.mixColor(0,255,0),
   A1lib.mixColor(145,255,145),
   A1lib.mixColor(148,255,148),
   A1lib.mixColor(150,255,150),
@@ -33,10 +34,10 @@ const LIME_GREENS = [
   A1lib.mixColor(156,255,156),
   A1lib.mixColor(159,255,159),
   A1lib.mixColor(162,255,162),
+  A1lib.mixColor(0,111,0),
 ];
 
 const GENERAL_CHAT = [
-  A1lib.mixColor(255,255,255),  // white (timestamp / punctuation)
   A1lib.mixColor(127,169,255),  // public blue
   A1lib.mixColor(102,152,255),  // drops blue
   A1lib.mixColor(67,188,188),   // teal
