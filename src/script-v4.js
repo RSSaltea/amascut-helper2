@@ -1,8 +1,3 @@
-/* -------------------------------------------
- * Amascut Helper — Single File w/ Skillbert-Style Nudges
- * -------------------------------------------
- */
-
 A1lib.identifyApp("appconfig.json");
 
 function log(msg) {
@@ -25,148 +20,45 @@ if (window.alt1) {
 
 const reader = new Chatbox.default();
 
-/* ---------- Colors ---------- */
-const COLORS = [
-  [0,255,0],[0,255,255],[0,175,255],[0,0,255],[255,82,86],
-  [159,255,159],[0,111,0],[255,143,143],[255,152,31],[255,111,0],
-  [255,255,0],[239,0,175],[255,79,255],[175,127,255],[191,191,191],
-  [127,255,255],[128,0,0],[255,255,255],[127,169,255],[255,140,56],
-  [255,0,0],[69,178,71],[164,153,125],[215,195,119],[255,255,176]
-].map(c => A1lib.mixColor(c[0], c[1], c[2]));
+// --- colors ---
+const AMASCUT_NAME = A1lib.mixColor(69, 131, 145);    // Name color
+const AMASCUT_TEXT = A1lib.mixColor(153, 255, 153);   // Speech color
+const WHITE = A1lib.mixColor(255, 255, 255);
 
-const KEYWORD_GREEN = A1lib.mixColor(153,255,153);
-if (!COLORS.includes(KEYWORD_GREEN)) COLORS.unshift(KEYWORD_GREEN);
-
-reader.readargs = { colors: COLORS, backwards: true };
-
-/* ---------- Nudges (Skillbert style) ---------- */
-function addFragShim(ctx, frag) {
-  if (typeof ctx.addfrag === "function") {
-    ctx.addfrag(frag);
-    return;
-  }
-  if (ctx.forward) {
-    ctx.fragments.push(frag);
-    ctx.text += frag.text;
-    ctx.rightx = frag.xend;
-  } else {
-    ctx.fragments.unshift(frag);
-    ctx.text = frag.text + ctx.text;
-    ctx.leftx = frag.xstart;
-  }
-}
-
-function checkchatbadge() { return false; }
-
-const forwardnudges = [
-  {
-    match: /^$/,
-    name: "timestampopen",
-    fn(ctx) {
-      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], ctx.rightx, ctx.baseliney, false, false);
-      if (c && c.chr === "[") {
-        addFragShim(ctx, { color:[255,255,255], index:-1, text:"[", xstart:ctx.rightx, xend:ctx.rightx + c.basechar.width });
-        return true;
-      }
-    }
-  },
-  { match: /(\] ?|news: ?|^)$/i, name: "badge", fn: checkchatbadge },
-  {
-    match: /.*/,
-    name: "body",
-    fn(ctx) {
-      const data = OCR.readLine(ctx.imgdata, ctx.font, ctx.colors, ctx.rightx, ctx.baseliney, true, false);
-      if (data.text) {
-        data.fragments.forEach(f => addFragShim(ctx, f));
-        return true;
-      }
-    }
-  },
-  {
-    match: /\[[\w: ]+$/,
-    name: "timestampclose",
-    fn(ctx) {
-      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], ctx.rightx, ctx.baseliney, false, false);
-      if (c && c.chr === "]") {
-        addFragShim(ctx, { color:[255,255,255], index:-1, text:"] ", xstart:ctx.rightx, xend:ctx.rightx + c.basechar.width + ctx.font.spacewidth });
-        return true;
-      }
-    }
-  },
-  {
-    match: /(^|\]|:)( ?)$/i,
-    name: "startline",
-    fn(ctx, m) {
-      const addspace = !m[2];
-      const x = ctx.rightx + (addspace ? ctx.font.spacewidth : 0);
-      let bestInfo = null, bestColor = null;
-      for (const col of ctx.colors) {
-        const info = OCR.readChar(ctx.imgdata, ctx.font, col, x, ctx.baseliney, false, false);
-        if (info && (!bestInfo || info.sizescore < bestInfo.sizescore)) {
-          bestInfo = info; bestColor = col;
-        }
-      }
-      if (bestColor) {
-        const line = OCR.readLine(ctx.imgdata, ctx.font, bestColor, x, ctx.baseliney, true, false);
-        if (line.text) {
-          if (addspace) addFragShim(ctx, { color:[255,255,255], index:-1, text:" ", xstart:ctx.rightx, xend:x });
-          line.fragments.forEach(f => addFragShim(ctx, f));
-          return true;
-        }
-      }
-    }
-  },
-  {
-    match: /\w$/,
-    name: "whitecolon",
-    fn(ctx) {
-      const x = ctx.rightx;
-      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], x, ctx.baseliney, false, true);
-      if (c && c.chr === ":") {
-        addFragShim(ctx, { color:[255,255,255], index:-1, text:": ", xstart:x, xend:x + c.basechar.width + ctx.font.spacewidth });
-        return true;
-      }
-    }
-  }
+const GENERAL_CHAT = [
+  WHITE,
+  A1lib.mixColor(127,169,255),
+  A1lib.mixColor(102,152,255),
+  A1lib.mixColor(67,188,188),
+  A1lib.mixColor(255,255,0),
+  A1lib.mixColor(235,47,47),
+  A1lib.mixColor(0,111,0),
+  A1lib.mixColor(0,255,0),
 ];
 
-const backwardnudges = [
-  { match: /^(news: |[\w\-_]{1,12}: )/i, name: "badge", fn: checkchatbadge },
-  {
-    match: /.*/,
-    name: "body",
-    fn(ctx) {
-      const data = OCR.readLine(ctx.imgdata, ctx.font, ctx.colors, ctx.leftx, ctx.baseliney, false, true);
-      if (data.text) {
-        data.fragments.reverse().forEach(f => addFragShim(ctx, f));
-        return true;
-      }
-    }
-  },
-  {
-    match: /^\w/,
-    name: "whitecolon",
-    fn(ctx) {
-      let x = ctx.leftx - ctx.font.spacewidth;
-      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], x, ctx.baseliney, false, true);
-      if (c && c.chr === ":") {
-        x -= c.basechar.width;
-        addFragShim(ctx, { color:[255,255,255], index:-1, text:": ", xstart:x, xend:x + c.basechar.width + ctx.font.spacewidth });
-        return true;
-      }
-    }
-  }
-];
-
-reader.forwardnudges = forwardnudges;
-reader.backwardnudges = backwardnudges;
-
-/* ---------- Game Logic ---------- */
-const RESPONSES = {
-  weak: "Range > Magic > Melee",
-  grovel: "Magic > Melee > Range",
-  pathetic: "Melee > Range > Magic"
+// Only need these colors for OCR
+reader.readargs = {
+  colors: [AMASCUT_NAME, AMASCUT_TEXT, WHITE, ...GENERAL_CHAT],
+  backwards: true
 };
+
+// --- responses ---
+const RESPONSES = {
+  weak:     "Range > Magic > Melee",
+  grovel:   "Magic > Melee > Range",
+  pathetic: "Melee > Range > Magic",
+};
+
+function showSelected(chat) {
+  try {
+    alt1.overLayRect(
+      A1lib.mixColor(0, 255, 0),
+      chat.mainbox.rect.x, chat.mainbox.rect.y,
+      chat.mainbox.rect.width, chat.mainbox.rect.height,
+      2000, 5
+    );
+  } catch {}
+}
 
 function updateUI(key) {
   const order = RESPONSES[key].split(" > ");
@@ -179,54 +71,74 @@ function updateUI(key) {
   log(`🎯 UI set to: ${RESPONSES[key]}`);
 }
 
-function showSelected(chat) {
-  try {
-    alt1.overLayRect(
-      A1lib.mixColor(0,255,0),
-      chat.mainbox.rect.x, chat.mainbox.rect.y,
-      chat.mainbox.rect.width, chat.mainbox.rect.height,
-      2000, 5
-    );
-  } catch {}
-}
+// --- merge lines from Amascut ---
+function mergeAmascutLines(segs) {
+  let merged = [];
+  let buffer = "";
 
-function normalize(s) {
-  return s.toLowerCase()
-    .replace(/[\[\]\.\',;:_\-!?()]/g, " ")
-    .replace(/[|!ijl1]/g, "l")
-    .replace(/[^a-z\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+  for (let seg of segs) {
+    if (!seg.fragments || seg.fragments.length === 0) continue;
+    const firstColor = seg.fragments[0].color;
+    const text = seg.text.trim();
 
-let lastSig = "", lastAt = 0;
-function triggerUpdate(key, src) {
-  const now = Date.now();
-  const sig = key + "|" + src.slice(-120);
-  if (sig !== lastSig || (now - lastAt) > 1500) {
-    lastSig = sig; lastAt = now;
-    log(`✅ matched ${key}`);
-    updateUI(key);
+    if (firstColor === A1lib.unmixColor(AMASCUT_NAME) && /Amascut/i.test(text)) {
+      // flush old buffer
+      if (buffer) {
+        merged.push(buffer);
+        buffer = "";
+      }
+      // remove "Amascut, the Devourer: " from start
+      buffer = text.replace(/^Amascut.*?:\s*/, "");
+    } else if (buffer && firstColor === A1lib.unmixColor(AMASCUT_TEXT)) {
+      // continuation of her speech
+      buffer += " " + text;
+    } else {
+      // not Amascut, flush buffer if any
+      if (buffer) {
+        merged.push(buffer);
+        buffer = "";
+      }
+    }
   }
+
+  if (buffer) merged.push(buffer);
+
+  return merged;
 }
+
+let lastSig = "";
+let lastAt = 0;
 
 function readChatbox() {
   let segs = [];
-  try { segs = reader.read() || []; }
-  catch (e) { log("⚠️ reader.read() failed; check Alt1 Pixel permission."); return; }
+  try {
+    segs = reader.read() || [];
+  } catch (e) {
+    log("⚠️ reader.read() failed; check Alt1 Pixel permission.");
+    return;
+  }
   if (!segs.length) return;
 
-  const texts = segs.map(s => (s.text || "").trim()).filter(Boolean);
-  if (!texts.length) return;
+  const mergedMsgs = mergeAmascutLines(segs);
 
-  log("segs: " + JSON.stringify(texts.slice(-6)));
-  const norm = normalize(texts.join(" "));
+  for (let msg of mergedMsgs) {
+    const lower = msg.toLowerCase();
+    let key = null;
+    if (lower.includes("weak")) key = "weak";
+    else if (lower.includes("grovel")) key = "grovel";
+    else if (lower.includes("pathetic")) key = "pathetic";
 
-  if (!/\bamas?cu?t\b/.test(norm)) return;
-
-  if (/\bweak\b/.test(norm)) return triggerUpdate("weak", norm);
-  if (/\bgrovel\b/.test(norm)) return triggerUpdate("grovel", norm);
-  if (/\bpathetic\b/.test(norm)) return triggerUpdate("pathetic", norm);
+    if (key) {
+      const now = Date.now();
+      const sig = key + "|" + msg;
+      if (sig !== lastSig || (now - lastAt) > 1500) {
+        lastSig = sig;
+        lastAt = now;
+        log(`✅ matched ${key} in: ${msg}`);
+        updateUI(key);
+      }
+    }
+  }
 }
 
 setTimeout(() => {
@@ -237,9 +149,11 @@ setTimeout(() => {
         reader.find();
       } else {
         clearInterval(h);
+
+        reader.pos.mainbox = reader.pos.boxes[0];
         log("✅ chatbox found");
         showSelected(reader.pos);
-        setInterval(readChatbox, 250);
+        setInterval(readChatbox, 300);
       }
     } catch (e) {
       log("⚠️ " + (e && e.message ? e.message : e));
