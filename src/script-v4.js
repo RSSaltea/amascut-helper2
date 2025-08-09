@@ -1,6 +1,19 @@
-A1lib.identifyApp("appconfig.json");
+// --- imports (same libs Skillbert uses) ---
+import * as a1lib from "alt1/base";
+import * as OCR from "alt1/ocr";
+import ChatBoxReader, { defaultcolors } from "./chatbox/index"; // << adjust path if needed
 
-// ---------- logger ----------
+// ------- app identify -------
+a1lib.identifyApp("appconfig.json");
+if (window.alt1) {
+  alt1.identifyAppUrl("./appconfig.json");
+} else {
+  const url = new URL("./appconfig.json", document.location.href).href;
+  document.body.innerHTML =
+    `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
+}
+
+// ------- tiny logger -------
 function log(msg) {
   console.log(msg);
   const out = document.getElementById("output");
@@ -11,85 +24,26 @@ function log(msg) {
   while (out.childElementCount > 50) out.removeChild(out.lastChild);
 }
 
-// ---------- Alt1 detection ----------
-if (window.alt1) {
-  alt1.identifyAppUrl("./appconfig.json");
-} else {
-  const url = new URL("./appconfig.json", document.location.href).href;
-  document.body.innerHTML =
-    `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
-}
+// ------- readers --------
+// 1) Skillbert reader with his default palette & nudges
+const mainReader = new ChatBoxReader();
+mainReader.readargs = {
+  colors: defaultcolors.map(c => a1lib.mixColor(c[0], c[1], c[2])),
+};
+// 2) STRICT green reader just for boss keywords (exact 153,255,153 + white)
+const KEYWORD_GREEN = a1lib.mixColor(153, 255, 153);
+const WHITE = a1lib.mixColor(255, 255, 255);
+const greenReader = new ChatBoxReader();
+greenReader.readargs = { colors: [KEYWORD_GREEN, WHITE] };
 
-// ---------- readers ----------
-const reader = new Chatbox.default();       // full-color reader (for locating/robust OCR)
-const greenReader = new Chatbox.default();  // GREEN-ONLY reader (for the boss keywords)
-
-// turn off diff filtering (we poll continuously)
-for (const r of [reader, greenReader]) {
+// disable diff filtering to avoid dropping lines while we’re polling
+for (const r of [mainReader, greenReader]) {
   r.diffRead = false;
   r.diffReadUseTimestamps = false;
   r.minoverlap = 0;
 }
 
-/* ---------- color sets ---------- */
-// Wide set so the general reader can find/track reliably
-const ALL_CHAT_COLORS = [
-  [0,255,0],[0,255,255],[0,175,255],[0,0,255],[255,82,86],
-  [159,255,159],[0,111,0],[255,143,143],[255,152,31],[255,111,0],
-  [255,255,0],[239,0,175],[255,79,255],[175,127,255],[191,191,191],
-  [127,255,255],[128,0,0],[255,255,255],[127,169,255],[255,140,56],
-  [255,0,0],[69,178,71],[164,153,125],[215,195,119],[255,255,176],
-].map(c => A1lib.mixColor(c[0], c[1], c[2]));
-
-// STRICT green for keywords: exactly 153,255,153 plus white for punctuation/colon
-const KEYWORD_GREEN = A1lib.mixColor(153,255,153);
-const WHITE = A1lib.mixColor(255,255,255);
-
-reader.readargs = { colors: ALL_CHAT_COLORS, backwards: true };
-greenReader.readargs = { colors: [KEYWORD_GREEN, WHITE], backwards: true };
-
-/* ---------- nudges (used by both readers; no images) ---------- */
-function addFrag(ctx, frag) {
-  if (ctx.forward) {
-    ctx.fragments.push(frag);
-    ctx.text += frag.text;
-    ctx.rightx = frag.xend;
-  } else {
-    ctx.fragments.unshift(frag);
-    ctx.text = frag.text + ctx.text;
-    ctx.leftx = frag.xstart;
-  }
-}
-
-// order: "[" → digits → "] " → pick body color → ":" → punctuation
-const forwardnudges = [
-  { match: /^$/, fn(ctx){ const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],ctx.rightx,ctx.baseliney,false,false); if(c?.chr==="["){ addFrag(ctx,{color:[255,255,255],index:-1,text:"[",xstart:ctx.rightx,xend:ctx.rightx+c.basechar.width}); return true; } } },
-  { match: /.*/, fn(ctx){ const l=OCR.readLine(ctx.imgdata,ctx.font,ctx.colors,ctx.rightx,ctx.baseliney,true,false); if(l.text){ l.fragments.forEach(f=>addFrag(ctx,f)); return true; } } },
-  { match: /\[[\w: ]+$/, fn(ctx){ const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],ctx.rightx,ctx.baseliney,false,false); if(c?.chr==="]"){ addFrag(ctx,{color:[255,255,255],index:-1,text:"] ",xstart:ctx.rightx,xend:ctx.rightx+c.basechar.width+ctx.font.spacewidth}); return true; } } },
-  { match: /(^|\]|:)( ?)$/i, fn(ctx,m){ const addspace=!m[2]; const x=ctx.rightx+(addspace?ctx.font.spacewidth:0);
-      let best=null,col=null; for (const c of ctx.colors){ const info=OCR.readChar(ctx.imgdata,ctx.font,c,x,ctx.baseliney,false,false); if(info && (!best || info.sizescore<best.sizescore)){ best=info; col=c; } }
-      if (col){ const l=OCR.readLine(ctx.imgdata,ctx.font,col,x,ctx.baseliney,true,false); if(l.text){ if(addspace) addFrag(ctx,{color:[255,255,255],index:-1,text:" ",xstart:ctx.rightx,xend:x}); l.fragments.forEach(f=>addFrag(ctx,f)); return true; } } } },
-  { match: /\w$/, fn(ctx){ const x=ctx.rightx; const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],x,ctx.baseliney,false,true); if(c?.chr === ":"){ addFrag(ctx,{color:[255,255,255],index:-1,text:": ",xstart:x,xend:x+c.basechar.width+ctx.font.spacewidth}); return true; } } },
-  { match: /\S$/, fn(ctx){ const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],ctx.rightx,ctx.baseliney,false,false); if(!c) return;
-      if([",",".","!","?"].includes(c.chr)){ addFrag(ctx,{color:[255,255,255],index:-1,text:c.chr,xstart:ctx.rightx,xend:ctx.rightx+c.basechar.width});
-        const sp=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],ctx.rightx,ctx.baseliney,false,false);
-        if(sp?.chr===" "){ addFrag(ctx,{color:[255,255,255],index:-1,text:" ",xstart:ctx.rightx,xend:ctx.rightx+ctx.font.spacewidth}); }
-        return true; } } },
-];
-
-const backwardnudges = [
-  { match: /.*/, fn(ctx){ const l=OCR.readLine(ctx.imgdata,ctx.font,ctx.colors,ctx.leftx,ctx.baseliney,false,true); if(l.text){ l.fragments.reverse().forEach(f=>addFrag(ctx,f)); return true; } } },
-  { match: /^\w/, fn(ctx){ let x=ctx.leftx-ctx.font.spacewidth; const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],x,ctx.baseliney,false,true); if(c?.chr === ":"){ x-=c.basechar.width; addFrag(ctx,{color:[255,255,255],index:-1,text:": ",xstart:x,xend:x+c.basechar.width+ctx.font.spacewidth}); return true; } } },
-  { match: /^\S/, fn(ctx){ let x=ctx.leftx-ctx.font.spacewidth; const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],x,ctx.baseliney,false,true); if(!c) return; if([",",".","!","?"].includes(c.chr)){ x-=c.basechar.width; addFrag(ctx,{color:[255,255,255],index:-1,text:c.chr+" ",xstart:x,xend:x+c.basechar.width+ctx.font.spacewidth}); return true; } } },
-];
-
-// attach to both readers
-for (const r of [reader, greenReader]) {
-  r.forwardnudges = forwardnudges;
-  r.backwardnudges = backwardnudges;
-}
-
-/* ---------- UI ---------- */
+// ------- UI logic -------
 const RESPONSES = {
   weak:     "Range > Magic > Melee",
   grovel:   "Magic > Melee > Range",
@@ -107,19 +61,19 @@ function updateUI(key) {
   log(`🎯 UI set to: ${RESPONSES[key]}`);
 }
 
-function showSelected(chat) {
+function showBox(pos) {
   try {
     alt1.overLayRect(
-      A1lib.mixColor(0,255,0),
-      chat.mainbox.rect.x, chat.mainbox.rect.y,
-      chat.mainbox.rect.width, chat.mainbox.rect.height,
+      a1lib.mixColor(0,255,0),
+      pos.mainbox.rect.x, pos.mainbox.rect.y,
+      pos.mainbox.rect.width, pos.mainbox.rect.height,
       2000, 5
     );
   } catch {}
 }
 
-/* ---------- matching ---------- */
-function normalize(s) {
+// ------- tolerant text helpers -------
+function norm(s) {
   return s.toLowerCase()
     .replace(/[\[\]\.\',;:_\-!?()]/g, " ")
     .replace(/[|!ijl1]/g, "l")
@@ -129,7 +83,7 @@ function normalize(s) {
 }
 
 let lastSig = "", lastAt = 0;
-function triggerUpdate(key, src) {
+function trigger(key, src) {
   const now = Date.now();
   const sig = key + "|" + src.slice(-120);
   if (sig !== lastSig || (now - lastAt) > 1500) {
@@ -139,55 +93,52 @@ function triggerUpdate(key, src) {
   }
 }
 
-/* ---------- polling ---------- */
-function readGreenKeywords() {
-  if (!reader.pos) return "";
+// ------- polling -------
+function readGreenLine() {
+  if (!mainReader.pos) return "";
 
-  // make sure the greenReader looks at the same box geometry
-  greenReader.pos = reader.pos;
+  // make greenReader use same position/box geometry as mainReader
+  greenReader.pos = mainReader.pos;
 
   let segs = [];
   try { segs = greenReader.read() || []; } catch (e) { return ""; }
   const texts = segs.map(s => (s.text || "").trim()).filter(Boolean);
   if (!texts.length) return "";
 
-  const full = texts.join(" ");
-  // debug the green-only pass (last few bits)
   log("green-segs: " + JSON.stringify(texts.slice(-6)));
-
-  return normalize(full);
+  return norm(texts.join(" "));
 }
 
-function readChatbox() {
-  // First: locate chat / keep the general reader warm
-  let warm = [];
-  try { warm = reader.read() || []; } catch {}
-  if (!warm.length && !reader.pos) return;
+function poll() {
+  // keep mainReader warm and ensure it has a position
+  if (!mainReader.pos) return;
 
-  // Now: GREEN-ONLY check for Amascut + keywords
-  const norm = readGreenKeywords();
-  if (!norm) return;
+  try { mainReader.read(); } catch {}
 
-  // Must mention Amascut (filters out green system lines like “The gods will protect…”)
-  if (!/\bamas?cu?t\b/.test(norm)) return;
+  const n = readGreenLine();
+  if (!n) return;
 
-  if (/\bweak\b/.test(norm))            return triggerUpdate("weak", norm);
-  if (/\bgrovel\b/.test(norm))          return triggerUpdate("grovel", norm);
-  if (/\bpathetic\b/.test(norm))        return triggerUpdate("pathetic", norm);
+  // require Amascut mention to avoid green system lines
+  if (!/\bamas?cu?t\b/.test(n)) return;
+
+  if (/\bweak\b/.test(n))            return trigger("weak", n);
+  if (/\bgrovel\b/.test(n))          return trigger("grovel", n);
+  if (/\bpathetic\b/.test(n))        return trigger("pathetic", n);
 }
 
-// start loop
+// ------- start -------
 setTimeout(() => {
-  const h = setInterval(() => {
+  const finder = setInterval(() => {
     try {
-      if (reader.pos === null) {
+      if (!mainReader.pos) {
         log("🔍 finding chatbox...");
-        reader.find();
-      } else {
-        clearInterval(h);
-        log("✅ chatbox found");
-        showSelected(reader.pos);
-        setInterval(readChatbox, 250);
+        const pos = mainReader.find();
+        if (pos) {
+          clearInterval(finder);
+          log("✅ chatbox found");
+          showBox(pos);
+          setInterval(poll, 250);
+        }
       }
     } catch (e) {
       log("⚠️ " + (e && e.message ? e.message : e));
