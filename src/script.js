@@ -219,13 +219,13 @@ if (key === "tear") {
 
   // After 6s finishes, wait 2s, then Barricade 31→1
   countdownTimers.push(setTimeout(() => {
-    startCountdown("Barricade", 20);
+    startCountdown("Barricade", 10);
 
     // After the 31s countdown finishes, reset
     countdownTimers.push(setTimeout(() => {
       resetUI();
       log("↺ UI reset");
-    }, 20000)); // 31s for Barricade countdown
+    }, 10000)); // 31s for Barricade countdown
 
   }, 10000)); // 6s (countdown) + 2s pause
 } else {
