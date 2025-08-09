@@ -101,7 +101,7 @@ function updateUI(key) {
 }
 
 // initial table state
-renderSingleRow("Waiting..");
+renderSingleRow("Waiting for mech");
 
 // optional box outline to confirm selection
 function showSelected(chat) {
