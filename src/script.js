@@ -215,7 +215,7 @@ function onAmascutLine(full, lineId) {
 
 if (key === "tear") {
   // Voke → Reflect immediately, 6→1 countdown
-  startCountdown("Voke → Reflect", 10);
+  startCountdown("Voke → Reflect", 8);
 
   // After 6s finishes, wait 2s, then Barricade 31→1
   countdownTimers.push(setTimeout(() => {
@@ -227,7 +227,7 @@ if (key === "tear") {
       log("↺ UI reset");
     }, 20000)); // 31s for Barricade countdown
 
-  }, 12000)); // 6s (countdown) + 2s pause
+  }, 10000)); // 6s (countdown) + 2s pause
 } else {
   updateUI(key);
 }
