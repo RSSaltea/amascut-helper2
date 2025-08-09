@@ -59,6 +59,8 @@ const RESPONSES = {
   pathetic: "Melee > Range > Magic",
 };
 
+let resetTimerId = null;
+
 function updateUI(key) {
   const order = RESPONSES[key].split(" > "); // ["Range","Magic","Melee"]
   const rows = document.querySelectorAll("#spec tr");
@@ -81,11 +83,15 @@ function updateUI(key) {
 
     row.classList.toggle("selected", i === 0);
   });
+
   log(`✅ ${RESPONSES[key]}`);
 
-  // reset UI after 6 seconds
-  clearTimeout(updateUI.resetTimer);
-  updateUI.resetTimer = setTimeout(resetUI, 6000);
+  // reset UI after 6 seconds (restart timer on every update)
+  if (resetTimerId) clearTimeout(resetTimerId);
+  resetTimerId = setTimeout(() => {
+    resetUI();
+    log("↺ UI reset");
+  }, 6000);
 }
 
 function resetUI() {
