@@ -25,6 +25,10 @@ if (window.alt1) {
   document.body.innerHTML = `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
 }
 
+
+const seenLineIds = new Set();
+const seenLineQueue = []; // FIFO to keep memory small
+
 // --------- Chat reader ----------
 const reader = new Chatbox.default();
 
@@ -142,7 +146,19 @@ function firstNonWhiteColor(seg) {
 // --------- debouncer for repeated OCR reads ----------
 let lastSig = "";
 let lastAt = 0;
-function onAmascutLine(full) {
+
+function onAmascutLine(full, lineId) {
+  // de-dupe: if we've already handled this exact chat line, skip
+  if (lineId && seenLineIds.has(lineId)) return;
+  if (lineId) {
+    seenLineIds.add(lineId);
+    seenLineQueue.push(lineId);
+    if (seenLineQueue.length > 120) {          // keep it bounded
+      const old = seenLineQueue.shift();
+      seenLineIds.delete(old);
+    }
+  }
+
   const norm = full.toLowerCase();
 
   let key = null;
@@ -152,6 +168,7 @@ function onAmascutLine(full) {
   else if (norm.includes("tear them apart")) key = "tear";
   if (!key) return;
 
+  // (optional: you can keep your small 1.2s debouncer, it won’t hurt)
   const now = Date.now();
   const sig = key + "|" + norm.slice(-80);
   if (sig === lastSig && now - lastAt < 1200) return;
@@ -159,15 +176,13 @@ function onAmascutLine(full) {
   lastAt = now;
 
   if (key === "tear") {
-    // schedule Voke → Reflect after 10s
+    // do not change UI immediately: schedule as requested
     setTimeout(() => {
       showSingleRow("Voke → Reflect");
 
-      // schedule Barricade 5s later
       setTimeout(() => {
         showSingleRow("Barricade");
 
-        // schedule reset 6s after that
         setTimeout(() => {
           resetUI();
           log("↺ UI reset");
@@ -176,12 +191,11 @@ function onAmascutLine(full) {
       }, 5000);
 
     }, 10000);
-
   } else {
-    // normal Range/Magic/Melee updates
-    updateUI(key);
+    updateUI(key); // normal Grovel/Weak/Pathetic
   }
 }
+
 
 // helper to show only one row with a given label
 function onAmascutLine(full) {
@@ -279,11 +293,12 @@ function readChatbox() {
       }
     }
 
-    if (full) {
-      // No "Amascut says →" prefix; we only keep raw speech for debug, UI updates handled below
+      if (full) {
       log(full);
-      onAmascutLine(full);
-    }
+      const lineId = seg.text.trim();
+      onAmascutLine(full, lineId);
+}
+
   }
 }
 
