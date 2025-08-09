@@ -21,25 +21,24 @@ if (window.alt1) {
 const reader = new Chatbox.default();
 
 const LIME_GREENS = [
+  A1lib.mixColor(0,255,0),     // bright green
   A1lib.mixColor(145,255,145),
   A1lib.mixColor(148,255,148),
   A1lib.mixColor(150,255,150),
   A1lib.mixColor(153,255,153),
   A1lib.mixColor(156,255,156),
   A1lib.mixColor(159,255,159),
-  A1lib.mixColor(162,255,162)
+  A1lib.mixColor(162,255,162),
+  A1lib.mixColor(0,111,0)      // dark green
 ];
 
-// some general chat colours that help the OCR produce segments reliably
 const GENERAL_CHAT = [
   A1lib.mixColor(255,255,255),  // white
   A1lib.mixColor(127,169,255),  // public chat blue
   A1lib.mixColor(102,152,255),  // drops blue
-  A1lib.mixColor(67,188,188),   // teal system-ish
+  A1lib.mixColor(67,188,188),   // teal
   A1lib.mixColor(255,255,0),    // yellow
-  A1lib.mixColor(235,47,47),    // red
-  A1lib.mixColor(0,111,0),
-  A1lib.mixColor(0,255,0),
+  A1lib.mixColor(235,47,47)     // red
 ];
 
 reader.readargs = {
@@ -47,51 +46,154 @@ reader.readargs = {
   backwards: true
 };
 
-// forward: accept white punctuation between colored fragments
-forwardnudges.push({
-  match: /\S$/,
-  fn(ctx) {
-    const startx = ctx.rightx;
-    const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], startx, ctx.baseliney, false, false);
-    if (!c) return;
-    const ch = c.chr;
-    // common white punctuations in chat
-    if (ch === "," || ch === "." || ch === "!" || ch === "?") {
-      // add "punct + (optional) space"
-      const width = c.basechar.width;
-      ctx.fragments.push({ color:[255,255,255], index:-1, text: ch, xstart:startx, xend:startx+width });
-      ctx.text += ch;
-      ctx.rightx += width;
-      // optional space after punctuation
-      const sp = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], ctx.rightx, ctx.baseliney, false, false);
-      if (sp && sp.chr === " ") {
-        ctx.fragments.push({ color:[255,255,255], index:-1, text:" ", xstart:ctx.rightx, xend:ctx.rightx + ctx.font.spacewidth });
-        ctx.text += " ";
-        ctx.rightx += ctx.font.spacewidth;
+// --- helper used by nudges ---
+function addFrag(ctx, frag) {
+  if (ctx.forward) {
+    ctx.fragments.push(frag);
+    ctx.text += frag.text;
+    ctx.rightx = frag.xend;
+  } else {
+    ctx.fragments.unshift(frag);
+    ctx.text = frag.text + ctx.text;
+    ctx.leftx = frag.xstart;
+  }
+}
+
+/* ---------- nudges (ported & trimmed to match your script) ---------- */
+const forwardnudges = [
+  // 1) "[" at start of timestamp (white)
+  {
+    match: /^$/,
+    fn(ctx) {
+      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], ctx.rightx, ctx.baseliney, false, false);
+      if (c && c.chr === "[") {
+        addFrag(ctx, { color:[255,255,255], index:-1, text:"[", xstart:ctx.rightx, xend:ctx.rightx + c.basechar.width });
+        return true;
       }
-      return true;
     }
-  }
-});
+  },
+  // 2) choose best color at start-of-body (after "]" or ":" or start)
+  {
+    match: /(^|\]|:)( ?)$/i,
+    fn(ctx, m) {
+      const addspace = !m[2];
+      const x = ctx.rightx + (addspace ? ctx.font.spacewidth : 0);
 
-// backward: same idea when scanning right→left
-backwardnudges.push({
-  match: /^\S/,
-  fn(ctx) {
-    let x = ctx.leftx - ctx.font.spacewidth;
-    const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], x, ctx.baseliney, false, true);
-    if (!c) return;
-    const ch = c.chr;
-    if (ch === "," || ch === "." || ch === "!" || ch === "?") {
-      x -= c.basechar.width;
-      ctx.fragments.unshift({ color:[255,255,255], index:-1, text: ch + " ", xstart:x, xend:x + c.basechar.width + ctx.font.spacewidth });
-      ctx.text = ch + " " + ctx.text;
-      ctx.leftx = x;
-      return true;
+      let bestInfo = null, bestCol = null;
+      for (const col of ctx.colors) {
+        const info = OCR.readChar(ctx.imgdata, ctx.font, col, x, ctx.baseliney, false, false);
+        if (info && (!bestInfo || info.sizescore < bestInfo.sizescore)) {
+          bestInfo = info; bestCol = col;
+        }
+      }
+      if (bestCol) {
+        const line = OCR.readLine(ctx.imgdata, ctx.font, bestCol, x, ctx.baseliney, true, false);
+        if (line.text) {
+          if (addspace) addFrag(ctx, { color:[255,255,255], index:-1, text:" ", xstart:ctx.rightx, xend:x });
+          line.fragments.forEach(f => addFrag(ctx, f));
+          return true;
+        }
+      }
     }
-  }
-});
+  },
+  // 3) generic forward body read (multi-color)
+  {
+    match: /.*/,
+    fn(ctx) {
+      const line = OCR.readLine(ctx.imgdata, ctx.font, ctx.colors, ctx.rightx, ctx.baseliney, true, false);
+      if (line.text) {
+        line.fragments.forEach(f => addFrag(ctx, f));
+        return true;
+      }
+    }
+  },
+  // 4) "] " at end of timestamp (white)
+  {
+    match: /\[[\w: ]+$/,
+    fn(ctx) {
+      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], ctx.rightx, ctx.baseliney, false, false);
+      if (c && c.chr === "]") {
+        addFrag(ctx, { color:[255,255,255], index:-1, text:"] ", xstart:ctx.rightx, xend:ctx.rightx + c.basechar.width + ctx.font.spacewidth });
+        return true;
+      }
+    }
+  },
+  // 5) white ":" between name and body
+  {
+    match: /\w$/,
+    fn(ctx) {
+      const x = ctx.rightx;
+      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], x, ctx.baseliney, false, true);
+      if (c && c.chr === ":") {
+        addFrag(ctx, { color:[255,255,255], index:-1, text:": ", xstart:x, xend:x + c.basechar.width + ctx.font.spacewidth });
+        return true;
+      }
+    }
+  },
+  // 6) bridge white punctuation (comma/period/etc) inside names/text
+  {
+    match: /\S$/,
+    fn(ctx) {
+      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], ctx.rightx, ctx.baseliney, false, false);
+      if (!c) return;
+      const ch = c.chr;
+      if (ch === "," || ch === "." || ch === "!" || ch === "?") {
+        addFrag(ctx, { color:[255,255,255], index:-1, text: ch, xstart:ctx.rightx, xend:ctx.rightx + c.basechar.width });
+        const sp = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], ctx.rightx, ctx.baseliney, false, false);
+        if (sp && sp.chr === " ") {
+          addFrag(ctx, { color:[255,255,255], index:-1, text:" ", xstart:ctx.rightx, xend:ctx.rightx + ctx.font.spacewidth });
+        }
+        return true;
+      }
+    }
+  },
+];
 
+const backwardnudges = [
+  // 1) generic backward body read
+  {
+    match: /.*/,
+    fn(ctx) {
+      const line = OCR.readLine(ctx.imgdata, ctx.font, ctx.colors, ctx.leftx, ctx.baseliney, false, true);
+      if (line.text) {
+        line.fragments.reverse().forEach(f => addFrag(ctx, f));
+        return true;
+      }
+    }
+  },
+  // 2) white ":" before the name (backward scan)
+  {
+    match: /^\w/,
+    fn(ctx) {
+      let x = ctx.leftx - ctx.font.spacewidth;
+      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], x, ctx.baseliney, false, true);
+      if (c && c.chr === ":") {
+        x -= c.basechar.width;
+        addFrag(ctx, { color:[255,255,255], index:-1, text:": ", xstart:x, xend:x + c.basechar.width + ctx.font.spacewidth });
+        return true;
+      }
+    }
+  },
+  // 3) bridge white punctuation when going backward
+  {
+    match: /^\S/,
+    fn(ctx) {
+      let x = ctx.leftx - ctx.font.spacewidth;
+      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], x, ctx.baseliney, false, true);
+      if (!c) return;
+      const ch = c.chr;
+      if (ch === "," || ch === "." || ch === "!" || ch === "?") {
+        x -= c.basechar.width;
+        addFrag(ctx, { color:[255,255,255], index:-1, text: ch + " ", xstart:x, xend:x + c.basechar.width + ctx.font.spacewidth });
+        return true;
+      }
+    }
+  },
+];
+
+// attach to reader
+reader.forwardnudges = forwardnudges;
+reader.backwardnudges = backwardnudges;
 
 const RESPONSES = {
   weak:     "Range > Magic > Melee",
@@ -130,13 +232,10 @@ function readChatbox() {
     log("⚠️ reader.read() failed; check Alt1 Pixel permission.");
     return;
   }
-  if (!segs.length) {
-    return;
-  }
+  if (!segs.length) return;
 
   const texts = segs.map(s => (s.text || "").trim()).filter(Boolean);
   if (!texts.length) return;
-
 
   log("segs: " + JSON.stringify(texts.slice(-6)));
 
@@ -167,8 +266,6 @@ setTimeout(() => {
         reader.find();
       } else {
         clearInterval(h);
-
-        reader.pos.mainbox = reader.pos.boxes[0];
         log("✅ chatbox found");
         showSelected(reader.pos);
         setInterval(readChatbox, 300);
