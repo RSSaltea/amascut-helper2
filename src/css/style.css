@@ -61,6 +61,50 @@ div.headerTitle:after {
 	width:25px;
 	height:24px;
 }
+/* Logs toggle */
+.toolbar { display:flex; justify-content:flex-end; gap:8px; margin:4px 0; }
+
+/* Panel that holds the logs */
+.logs { 
+  margin-top: 8px;
+  background: rgba(0,0,0,.35);
+  border: 1px solid #513015;
+  border-radius: 4px;
+}
+.hidden { display:none; }
+
+.logs-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:6px 8px;
+  font-weight:600;
+  color:#ddd;
+  background: linear-gradient(#2a2119,#1c140c);
+  border-bottom: 1px solid #3b2816;
+}
+
+/* little scroll-to-bottom button */
+.log-scroll {
+  all: unset;
+  cursor: pointer;
+  padding: 2px 8px;
+  border: 1px solid #70502e;
+  border-radius: 3px;
+  background: linear-gradient(#3a2b1f,#241a11);
+  color: #ddd;
+}
+.log-scroll:hover { filter: brightness(1.15); }
+
+/* Scrollable body */
+.logs-body {
+  max-height: 140px;          /* adjust if you want */
+  overflow-y: auto;
+  font-size: 11px;
+  padding: 6px 8px;
+  color: #cfd6dc;
+}
+
 .nisbutton{height:32px; position:relative; background:url('https://runeapps.org/nis/alt1-currentskin/nisbutton.png') 0px -100% / 20px 400% repeat content-box; cursor:pointer; text-align:center; color:#000; font-family:'trajan-pro-3'; text-shadow:1px 1px 2px #ECC622; font-size:18px; margin:5px; padding:0px 12px; line-height:32px; user-select:none; -webkit-user-select:none;}
 div.header .nisseperator {
 	bottom:0px;
