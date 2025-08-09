@@ -82,6 +82,10 @@ function updateUI(key) {
     row.classList.toggle("selected", i === 0);
   });
   log(`✅ ${RESPONSES[key]}`);
+
+  // reset UI after 6 seconds
+  clearTimeout(updateUI.resetTimer);
+  updateUI.resetTimer = setTimeout(resetUI, 6000);
 }
 
 function resetUI() {
