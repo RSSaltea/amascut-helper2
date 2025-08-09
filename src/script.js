@@ -22,21 +22,28 @@ function log(msg) {
   while (out.childElementCount > 200) out.removeChild(out.firstChild);
 }
 
-// --- Logs panel controls (requires the HTML from previous step) --------------
 (function wireLogsPanel() {
-  const logsPanel = document.getElementById("logsPanel");
-  const toggleLogsBtn = document.getElementById("toggleLogs");
-  const scrollLogsBtn = document.getElementById("scrollLogs");
-  const outEl = document.getElementById("output");
-  if (toggleLogsBtn && logsPanel) {
-    toggleLogsBtn.addEventListener("click", () => {
-      logsPanel.classList.toggle("hidden");
-    });
-  }
-  if (scrollLogsBtn && outEl) {
-    scrollLogsBtn.addEventListener("click", () => {
-      outEl.scrollTop = outEl.scrollHeight;
-    });
+  try {
+    const logsPanel     = document.getElementById("logsPanel");
+    const toggleLogsBtn = document.getElementById("toggleLogs");
+    const scrollLogsBtn = document.getElementById("scrollLogs");
+    const outEl         = document.getElementById("output");
+    const table         = document.getElementById("spec");
+
+    if (toggleLogsBtn && logsPanel) {
+      toggleLogsBtn.addEventListener("click", () => {
+        logsPanel.classList.toggle("hidden");
+        const showing = !logsPanel.classList.contains("hidden");
+        if (table) table.style.display = showing ? "none" : ""; // hide/show table
+      });
+    }
+    if (scrollLogsBtn && outEl) {
+      scrollLogsBtn.addEventListener("click", () => {
+        outEl.scrollTop = outEl.scrollHeight;
+      });
+    }
+  } catch (e) {
+    console.warn("wireLogsPanel failed:", e);
   }
 })();
 
