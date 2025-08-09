@@ -276,6 +276,8 @@ a.alert {
   background: linear-gradient(#301010, #ff3b3b);
 }
 
+.hidden { display: none; }
+
 /* Selected (top) row emphasis */
 .attacks tr.selected {
   box-shadow: inset 0 0 0 2px #ffffff22, 0 0 10px #000 inset;
