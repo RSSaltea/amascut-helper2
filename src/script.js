@@ -5,34 +5,8 @@
 A1lib.identifyApp("appconfig.json");
 
 // --------- tiny logger ----------
-// [LOGS] ensure SETTINGS exists and has a 'logs' flag (default: true) without touching other settings
-if (typeof window.SETTINGS === "undefined") window.SETTINGS = {};
-(function initLogsDefault() {
-  try {
-    const raw = localStorage.getItem("AH_SETTINGS");
-    if (raw) {
-      const stored = JSON.parse(raw);
-      if (typeof SETTINGS.logs === "undefined" && typeof stored.logs !== "undefined") {
-        SETTINGS.logs = stored.logs;
-      }
-    }
-  } catch {}
-  if (typeof SETTINGS.logs === "undefined") SETTINGS.logs = true;
-})();
-
-// [LOGS] lightweight persister that only updates the 'logs' flag, leaving all other saved settings untouched
-function persistLogsSetting() {
-  try {
-    const raw = localStorage.getItem("AH_SETTINGS");
-    const data = raw ? JSON.parse(raw) : {};
-    data.logs = !!SETTINGS.logs;
-    localStorage.setItem("AH_SETTINGS", JSON.stringify(data));
-  } catch {}
-}
-
 function log(msg) {
   try {
-    if (!SETTINGS.logs) return; // [LOGS] respect toggle
     console.log(msg);
     const out = document.getElementById("output");
     if (!out) return;
@@ -41,18 +15,6 @@ function log(msg) {
     out.prepend(d);
     while (out.childElementCount > 60) out.removeChild(out.lastChild);
   } catch {}
-}
-
-function applyLogsVisibility() {
-  const out = document.getElementById("output");
-  if (!out) return;
-  if (SETTINGS.logs) {
-    out.style.display = "";
-    out.style.maxHeight = "140px";    // scrollable area
-    out.style.overflowY = "auto";
-  } else {
-    out.style.display = "none";
-  }
 }
 
 // --------- Alt1 detection ----------
@@ -222,6 +184,99 @@ function firstNonWhiteColor(seg) {
   return null;
 }
 
+// ==============================
+// Settings (UI + persistence)
+// ==============================
+
+const SETTINGS_DEFAULT = {
+  role: "Base",         // "DPS" | "Base"
+  bend: "Voke",         // "Voke" | "Immort"
+  scarabs: "Barricade", // "Barricade" | "Dive"
+};
+
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem("amascut.settings") || "null");
+    return Object.assign({}, SETTINGS_DEFAULT, s || {});
+  } catch {
+    return { ...SETTINGS_DEFAULT };
+  }
+}
+
+function saveSettings(s) {
+  try { localStorage.setItem("amascut.settings", JSON.stringify(s)); } catch {}
+}
+
+let SETTINGS = loadSettings();
+
+// inject minimal UI (cog + panel) without touching your HTML/CSS files
+(function injectSettingsUI(){
+  const style = document.createElement("style");
+  style.textContent = `
+    .ah-cog{position:fixed;top:6px;right:8px;z-index:11000;font-size:16px;opacity:.8;background:#222;
+      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 6px;line-height:1;}
+    .ah-cog:hover{opacity:1}
+    .ah-panel{position:fixed;top:30px;right:8px;z-index:11000;background:#1b1b1b;border:1px solid #444;
+      border-radius:6px;padding:8px 10px;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.5);display:none}
+    .ah-row{display:flex;align-items:center;gap:8px;margin:6px 0}
+    .ah-row label{min-width:95px;font-size:12px;opacity:.9}
+    .ah-panel select{flex:1;background:#111;color:#fff;border:1px solid #555;border-radius:4px;padding:3px}
+    .ah-tip{border-bottom:1px dotted #aaa;cursor:help}
+  `;
+  document.head.appendChild(style);
+
+  const cog = document.createElement("button");
+  cog.className = "ah-cog";
+  cog.title = "Settings";
+  cog.textContent = "⚙️";
+  document.body.appendChild(cog);
+
+  const panel = document.createElement("div");
+  panel.className = "ah-panel";
+  panel.innerHTML = `
+    <div class="ah-row">
+      <label>Role</label>
+      <select id="ah-role">
+        <option value="DPS">DPS</option>
+        <option value="Base">Base</option>
+      </select>
+    </div>
+    <div class="ah-row">
+      <label><span class="ah-tip" title="How do you plan to deal with Bend the knee mechanic?">Bend the knee</span></label>
+      <select id="ah-bend">
+        <option value="Voke">Voke</option>
+        <option value="Immort">Immort</option>
+      </select>
+    </div>
+    <div class="ah-row">
+      <label><span class="ah-tip" title="How do you plan to deal with Scarabs?">Scarabs</span></label>
+      <select id="ah-scarabs">
+        <option value="Barricade">Barricade</option>
+        <option value="Dive">Dive</option>
+      </select>
+    </div>
+  `;
+  document.body.appendChild(panel);
+
+  // set initial values
+  panel.querySelector("#ah-role").value = SETTINGS.role;
+  panel.querySelector("#ah-bend").value = SETTINGS.bend;
+  panel.querySelector("#ah-scarabs").value = SETTINGS.scarabs;
+
+  // events
+  cog.addEventListener("click", () => {
+    panel.style.display = panel.style.display === "none" ? "block" : "none";
+  });
+  function updateFromUI(){
+    SETTINGS.role = panel.querySelector("#ah-role").value;
+    SETTINGS.bend = panel.querySelector("#ah-bend").value;
+    SETTINGS.scarabs = panel.querySelector("#ah-scarabs").value;
+    saveSettings(SETTINGS);
+    log(`⚙️ Settings → role=${SETTINGS.role}, bend=${SETTINGS.bend}, scarabs=${SETTINGS.scarabs}`);
+  }
+  panel.addEventListener("change", updateFromUI);
+})();
+
 // --------- Debouncer ----------
 let lastSig = "";
 let lastAt = 0;
@@ -237,55 +292,95 @@ function onAmascutLine(full, lineId) {
     }
   }
 
-  const norm = full.toLowerCase();
+  const raw = full;               // preserve case
+  const low = full.toLowerCase(); // helper for insensitive checks
+
+  // ---- key detection (Weak is case-sensitive) ----
   let key = null;
-  if (norm.includes("grovel")) key = "grovel";
-  // case-sensitive weak: only match lower-case "weak", not "WEAK"
-  else if (full.includes("weak")) key = "weak";
-  else if (norm.includes("pathetic")) key = "pathetic";
-  else if (norm.includes("tear them apart")) key = "tear";
-  else if (norm.includes("tumeken's heart delivered")) key = "scarabheart";
-  else if (norm.includes("i will not be subjugated")) key = "subjugated";
+  if (raw.includes("Grovel")) key = "grovel";
+  else if (/\bWeak\b/.test(raw)) key = "weak";
+  else if (raw.includes("Pathetic")) key = "pathetic";
+  else if (low.includes("tear them apart")) key = "tear";
+  else if (low.includes("tumeken's heart delivered")) key = "barricadeHeart";
+  else if (raw.includes("I WILL NOT BE SUBJUGATED")) key = "notSubjugated";
   if (!key) return;
 
+  // light debouncer by content signature
   const now = Date.now();
-  const sig = key + "|" + norm.slice(-80);
+  const sig = key + "|" + raw.slice(-80);
   if (sig === lastSig && now - lastAt < 1200) return;
   lastSig = sig;
   lastAt = now;
 
+  // ==============================
+  // Settings-driven behavior
+  // ==============================
   if (key === "tear") {
-    // Voke → Reflect immediately (your current timings kept)
-    startCountdown("Voke → Reflect", 8);
+    // Decide first step (Bend the knee phase)
+    // - DPS + Voke       -> Voke Reflect (countdown)
+    // - DPS + Immort     -> do nothing
+    // - Base + Immort    -> Immortality (countdown)
+    // - Base + Voke      -> do nothing
+    let first = "none"; // "voke" | "immort" | "none"
+    if (SETTINGS.role === "DPS" && SETTINGS.bend === "Voke") first = "voke";
+    else if (SETTINGS.role === "Base" && SETTINGS.bend === "Immort") first = "immort";
 
-    // After 8s finishes, wait 2s, then Barricade 10→1 (kept as-is)
+    const firstDuration = (first === "voke" || first === "immort") ? 8 : 0;
+
+    if (first === "voke") {
+      startCountdown("Voke → Reflect", 8);
+    } else if (first === "immort") {
+      startCountdown("Immortality", 8);
+    } // else none
+
+// Scarabs follow after the first phase completes (or after 2s if none)
+const scarabDelayMs = (firstDuration ? (firstDuration + 2) : 2) * 1000;
+
+countdownTimers.push(setTimeout(() => {
+  if (SETTINGS.scarabs === "Barricade") {
+    // Base + Barricade → 18s, else 10s
+    const barricadeTime = (SETTINGS.role === "Base") ? 18 : 10;
+    startCountdown("Barricade", barricadeTime);
     countdownTimers.push(setTimeout(() => {
-      startCountdown("Barricade", 10);
+      resetUI();
+      log("↺ UI reset");
+    }, barricadeTime * 1000));
+  } else {
+    // Dive: immediate, no countdown, reset after 8s
+    showSingleRow("Dive");
+    countdownTimers.push(setTimeout(() => {
+      resetUI();
+      log("↺ UI reset");
+    }, 8000));
+  }
+}, scarabDelayMs));
 
-      countdownTimers.push(setTimeout(() => {
-        resetUI();
-        log("↺ UI reset");
-      }, 10000));
-    }, 10000));
-
-  } else if (key === "scarabheart") {
-    // New: Tumeken's heart delivered → Barricade 12s
+  } else if (key === "barricadeHeart") {
+    // Tumeken's heart delivered → Barricade 12s (independent)
     startCountdown("Barricade", 12);
     countdownTimers.push(setTimeout(() => {
       resetUI();
       log("↺ UI reset");
     }, 12000));
 
-  } else if (key === "subjugated") {
-    // New: I WILL NOT BE SUBJUGATED → fixed text, reset after 8s
+  } else if (key === "notSubjugated") {
+    // Instruction line, reset after 8s (independent)
     showSingleRow("Magic Prayer → Devo → Reflect → Melee Prayer");
-    countdownTimers.push(setTimeout(() => {
+    setTimeout(() => {
       resetUI();
       log("↺ UI reset");
-    }, 8000));
+    }, 8000);
 
   } else {
-    updateUI(key);
+    // Grovel/Weak/Pathetic depend on Role:
+    // - DPS  -> do nothing
+    // - Base -> normal 3-row behavior
+    if (SETTINGS.role === "Base") {
+      cancelCountdowns();
+      updateUI(key);
+    } else {
+      log(`(DPS mode) Ignored ${key}`);
+    }
   }
 }
 
@@ -353,59 +448,3 @@ function showSelected(pos) {
     alt1.overLayRect(A1lib.mixColor(0, 255, 0), b.x, b.y, b.width, b.height, 2000, 4);
   } catch {}
 }
-
-// [LOGS] add a Logs row into the existing settings cog panel (non-invasive)
-(function addLogsToCogWhenReady() {
-  function findPanel() {
-    return document.getElementById("ah-settings-panel") ||
-           document.querySelector("[data-ah-settings-panel]") ||
-           document.querySelector(".ah-settings-panel") ||
-           // fallback: a container that already contains our other setting labels
-           Array.from(document.querySelectorAll("div,section")).find(el =>
-             /Role/i.test(el.textContent) && /Bend the knee/i.test(el.textContent) && /Scarabs/i.test(el.textContent)
-           );
-  }
-
-  function inject(panel) {
-    if (!panel || document.getElementById("ah-logs-row")) return;
-
-    const row = document.createElement("div");
-    row.id = "ah-logs-row";
-    row.style.display = "grid";
-    row.style.gridTemplateColumns = "1fr auto";
-    row.style.alignItems = "center";
-    row.style.gap = "8px";
-    row.style.margin = "8px 0";
-
-    const label = document.createElement("div");
-    label.textContent = "Logs";
-    label.style.opacity = ".9";
-    row.appendChild(label);
-
-    const toggle = document.createElement("input");
-    toggle.type = "checkbox";
-    toggle.checked = !!SETTINGS.logs;
-    toggle.title = "Show/hide debug logs";
-    toggle.addEventListener("change", () => {
-      SETTINGS.logs = toggle.checked;
-      persistLogsSetting();
-      applyLogsVisibility();
-    });
-    row.appendChild(toggle);
-
-    panel.appendChild(row);
-  }
-
-  const panel = findPanel();
-  if (panel) {
-    inject(panel);
-    applyLogsVisibility(); // added so visibility is applied immediately
-  } else {
-    const mo = new MutationObserver(() => {
-      const p = findPanel();
-      if (p) { inject(p); mo.disconnect(); }
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
-    applyLogsVisibility();   // set initial state even before the panel appears
-  }
-})();
