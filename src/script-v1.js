@@ -43,12 +43,16 @@ function log(msg) {
   } catch {}
 }
 
-// [LOGS] show/hide log area + optional scroll button
 function applyLogsVisibility() {
   const out = document.getElementById("output");
-  const btn = document.getElementById("ah-logs-scroll");
-  if (out) out.style.display = SETTINGS.logs ? "" : "none";
-  if (btn) btn.style.display = SETTINGS.logs ? "" : "none";
+  if (!out) return;
+  if (SETTINGS.logs) {
+    out.style.display = "";
+    out.style.maxHeight = "140px";    // scrollable area
+    out.style.overflowY = "auto";
+  } else {
+    out.style.display = "none";
+  }
 }
 
 // --------- Alt1 detection ----------
@@ -350,26 +354,6 @@ function showSelected(pos) {
   } catch {}
 }
 
-// [LOGS] ensure a Scroll button (kept outside the cog menu) and honor visibility
-(function ensureLogsScrollButton() {
-  const out = document.getElementById("output");
-  if (!out) return;
-  if (!document.getElementById("ah-logs-scroll")) {
-    const btn = document.createElement("button");
-    btn.id = "ah-logs-scroll";
-    btn.textContent = "Scroll";
-    btn.style.cursor = "pointer";
-    btn.style.padding = "2px 8px";
-    btn.style.border = "1px solid #444";
-    btn.style.background = "#222";
-    btn.style.color = "#ddd";
-    btn.style.margin = "4px 10px";
-    btn.addEventListener("click", () => { out.scrollTop = out.scrollHeight; });
-    out.parentNode.insertBefore(btn, out);
-  }
-  applyLogsVisibility();
-})();
-
 // [LOGS] add a Logs row into the existing settings cog panel (non-invasive)
 (function addLogsToCogWhenReady() {
   function findPanel() {
@@ -415,11 +399,13 @@ function showSelected(pos) {
   const panel = findPanel();
   if (panel) {
     inject(panel);
+    applyLogsVisibility(); // added so visibility is applied immediately
   } else {
     const mo = new MutationObserver(() => {
       const p = findPanel();
       if (p) { inject(p); mo.disconnect(); }
     });
     mo.observe(document.body, { childList: true, subtree: true });
+    applyLogsVisibility();   // set initial state even before the panel appears
   }
 })();
