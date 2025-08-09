@@ -1,197 +1,183 @@
-/* ------------------------------------------------
- * Amascut Helper (no imports; works with your HTML)
- * ------------------------------------------------ */
-
+// script.js
 A1lib.identifyApp("appconfig.json");
 
-// --------- tiny logger (left in for debugging UI pane) ----------
+// ---------- tiny logger ----------
 function log(msg) {
-  try {
-    console.log(msg);
-    const out = document.getElementById("output");
-    if (!out) return;
-    const d = document.createElement("div");
-    d.textContent = msg;
-    out.prepend(d);
-    while (out.childElementCount > 60) out.removeChild(out.lastChild);
-  } catch {}
+  console.log(msg);
+  const out = document.getElementById("output");
+  if (!out) return;
+  const d = document.createElement("div");
+  d.textContent = msg;
+  out.prepend(d);
+  while (out.childElementCount > 60) out.removeChild(out.lastChild);
 }
 
-// --------- Alt1 detection ----------
+// alt1 install fallback
 if (window.alt1) {
   alt1.identifyAppUrl("./appconfig.json");
 } else {
   const url = new URL("./appconfig.json", document.location.href).href;
-  document.body.innerHTML = `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
+  document.body.innerHTML =
+    `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
 }
 
-// --------- Chat reader ----------
+// ---------- chat reader ----------
 const reader = new Chatbox.default();
 
-// Colors (RGB)
-const NAME_RGB = [69, 131, 145];      // "Amascut, the Devourer"
-const TEXT_RGB = [153, 255, 153];     // her green speech
-const WHITE_RGB = [255, 255, 255];
-const PUB_BLUE = [127, 169, 255];     // timestamps/public
+// bright lime NPC greens + a few general colors that stabilise OCR
+const LIME_GREENS = [
+  A1lib.mixColor(153,255,153), // <- the one we really care about
+  A1lib.mixColor(150,255,150),
+  A1lib.mixColor(156,255,156),
+  A1lib.mixColor(162,255,162)
+];
+const GENERAL_CHAT = [
+  A1lib.mixColor(255,255,255),
+  A1lib.mixColor(127,169,255),
+  A1lib.mixColor(67,188,188),
+  A1lib.mixColor(0,111,0),
+  A1lib.mixColor(0,255,0),
+  A1lib.mixColor(235,47,47)
+];
 
-// tolerance for AA drift
-function isColorNear(rgb, target, tol = 10) {
-  return Math.abs(rgb[0] - target[0]) <= tol &&
-         Math.abs(rgb[1] - target[1]) <= tol &&
-         Math.abs(rgb[2] - target[2]) <= tol;
-}
-
-// OCR colors (keep minimal for stability)
 reader.readargs = {
-  colors: [
-    A1lib.mixColor(...NAME_RGB),
-    A1lib.mixColor(...TEXT_RGB),
-    A1lib.mixColor(...WHITE_RGB),
-    A1lib.mixColor(...PUB_BLUE),
-  ],
+  colors: [...LIME_GREENS, ...GENERAL_CHAT],
   backwards: true
 };
 
-// --------- UI mapping & helpers ----------
+// ---------- UI helpers ----------
 const RESPONSES = {
   weak:     "Range > Magic > Melee",
   grovel:   "Magic > Melee > Range",
   pathetic: "Melee > Range > Magic",
 };
 
-function updateUI(key) {
-  const order = RESPONSES[key].split(" > "); // e.g., ["Range","Magic","Melee"]
-  const rows = document.querySelectorAll("#spec tr");
+function roleToClass(role) {
+  const r = role.toLowerCase();
+  if (r.startsWith("range")) return "role-range";
+  if (r.startsWith("magic")) return "role-magic";
+  if (r.startsWith("melee")) return "role-melee";
+  return "";
+}
 
-  const roleClass = {
-    "Range": "role-range",
-    "Magic": "role-magic",
-    "Melee": "role-melee"
-  };
+// start with single row
+let fullShown = false;
 
-  rows.forEach((row, i) => {
-    const cell = row.querySelector("td");
-    const label = order[i] || "";
-    if (cell) cell.textContent = label;
+// render only first row (used before we know the call)
+function renderSingleRow(text, cssClass = "") {
+  const tbody = document.querySelector("#spec tbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  const tr = document.createElement("tr");
+  tr.className = `selected ${cssClass}`.trim();
+  tr.innerHTML = `<td>${text}</td>`;
+  tbody.appendChild(tr);
+}
 
-    // wipe previous role classes
-    row.classList.remove("role-range", "role-magic", "role-melee");
-
-    // apply new role color if we have a label
-    if (label && roleClass[label]) {
-      row.classList.add(roleClass[label]);
-    }
-
-    // highlight the top row
-    row.classList.toggle("selected", i === 0);
+// render full 3-row table in correct order & colors
+function renderFull(order) {
+  const tbody = document.querySelector("#spec tbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  order.forEach((role, i) => {
+    const tr = document.createElement("tr");
+    tr.classList.add(roleToClass(role));
+    if (i === 0) tr.classList.add("selected");
+    tr.innerHTML = `<td>${role}</td>`;
+    tbody.appendChild(tr);
   });
+}
 
+// called whenever we know the key (weak/grovel/pathetic)
+function updateUI(key) {
+  const order = RESPONSES[key].split(" > ");
+  if (!fullShown) {
+    fullShown = true;
+    renderFull(order);
+  } else {
+    renderFull(order);
+  }
   log(`✅ ${RESPONSES[key]}`);
 }
 
-function resetUI() {
-  const rows = document.querySelectorAll("#spec tr");
-  if (rows[0]?.querySelector("td")) rows[0].querySelector("td").textContent = "Waiting..";
-  if (rows[1]?.querySelector("td")) rows[1].querySelector("td").textContent = "";
-  if (rows[2]?.querySelector("td")) rows[2].querySelector("td").textContent = "";
-  rows.forEach((r, i) => r.classList.toggle("selected", i === 0));
-}
+// initial table state
+renderSingleRow("Waiting for mech");
 
-// draw a box so we know the chatbox is found
-function showSelected(pos) {
+// optional box outline to confirm selection
+function showSelected(chat) {
   try {
-    const b = pos.mainbox.rect;
-    alt1.overLayRect(A1lib.mixColor(0, 255, 0), b.x, b.y, b.width, b.height, 2000, 4);
+    alt1.overLayRect(
+      A1lib.mixColor(0, 255, 0),
+      chat.mainbox.rect.x, chat.mainbox.rect.y,
+      chat.mainbox.rect.width, chat.mainbox.rect.height,
+      2000, 5
+    );
   } catch {}
 }
 
-// --------- line utilities ----------
-function firstNonWhiteColor(seg) {
-  if (!seg.fragments) return null;
-  for (const f of seg.fragments) {
-    if (!isColorNear(f.color, WHITE_RGB)) return f.color;
-  }
-  return null;
-}
-
-// --------- debouncer for repeated OCR reads ----------
+// ---------- chat polling ----------
 let lastSig = "";
 let lastAt = 0;
-function onAmascutLine(full) {
-  const norm = full.toLowerCase();
 
-  let key = null;
-  if (norm.includes("grovel")) key = "grovel";
-  else if (norm.includes("weak")) key = "weak";
-  else if (norm.includes("pathetic")) key = "pathetic";
-  if (!key) return;
-
-  const now = Date.now();
-  const sig = key + "|" + norm.slice(-80);
-  if (sig === lastSig && now - lastAt < 1200) return;
-  lastSig = sig;
-  lastAt = now;
-
-  updateUI(key);
+// removes the “Amascut says → ” style prefix from log lines if it appears
+function stripSaysPrefix(s) {
+  return s.replace(/^\s*\d{2}:\d{2}:\d{2}\]\s*/,'')    // drop leading [hh:mm:ss] if present
+          .replace(/^Amascut\s*says\s*→\s*/i, '')      // “Amascut says → ”
+          .replace(/^Amascut,\s*the\s*Devourer:\s*/i,''); // normal speaker label
 }
 
-// --------- read loop ----------
 function readChatbox() {
   let segs = [];
-  try { segs = reader.read() || []; }
-  catch (e) { log("⚠️ reader.read() failed; enable Pixel permission in Alt1."); return; }
+  try { segs = reader.read() || []; } catch (e) {
+    log("⚠️ reader.read() failed; ensure Pixel permission.");
+    return;
+  }
   if (!segs.length) return;
 
-  // Scan for a line that contains Amascut's NAME color anywhere and the word "Amascut"
-  for (let i = 0; i < segs.length; i++) {
-    const seg = segs[i];
-    if (!seg.fragments || seg.fragments.length === 0) continue;
+  // Join as a single lowercased string for matching, but also keep a cleaned printable snippet
+  const texts = segs.map(s => (s.text || "").trim()).filter(Boolean);
+  if (!texts.length) return;
 
-    const hasNameColor = seg.fragments.some(f => isColorNear(f.color, NAME_RGB));
-    if (!hasNameColor || !/Amascut/i.test(seg.text)) continue;
+  const printable = stripSaysPrefix(texts[texts.length - 1]);
+  // only log short tail to avoid spam
+  log(printable);
 
-    // Extract same-line speech (after the first colon)
-    let full = seg.text;
-    const colon = full.indexOf(":");
-    if (colon !== -1) full = full.slice(colon + 1).trim();
+  const full = texts.join(" ").toLowerCase();
 
-    // Append wrapped green lines
-    for (let j = i + 1; j < segs.length; j++) {
-      const s2 = segs[j];
-      if (!s2.fragments || s2.fragments.length === 0) break;
-      const col = firstNonWhiteColor(s2);
-      if (col && isColorNear(col, TEXT_RGB)) {
-        full += " " + s2.text.trim();
-      } else {
-        break;
-      }
-    }
+  let key = null;
+  if (/\bgrovel\b/i.test(full)) key = "grovel";
+  else if (/\bpathetic\b/i.test(full)) key = "pathetic";
+  else if (/\bweak\b/i.test(full)) key = "weak";
 
-    if (full) {
-      // No "Amascut says →" prefix; we only keep raw speech for debug, UI updates handled below
-      log(full);
-      onAmascutLine(full);
+  if (key) {
+    const now = Date.now();
+    const sig = key + "|" + full.slice(-80);
+    // dedupe bursts
+    if (sig !== lastSig || (now - lastAt) > 1500) {
+      lastSig = sig;
+      lastAt = now;
+      updateUI(key);
     }
   }
 }
 
-// --------- boot ----------
-resetUI();
-
+// find chatbox then start polling
 setTimeout(() => {
   const finder = setInterval(() => {
     try {
-      if (!reader.pos) {
+      if (reader.pos === null) {
         log("🔍 finding chatbox...");
         reader.find();
       } else {
         clearInterval(finder);
+        // prefer the first found chat as the main one
+        reader.pos.mainbox = reader.pos.boxes[0];
         log("✅ chatbox found");
         showSelected(reader.pos);
-        setInterval(readChatbox, 250);
+        setInterval(readChatbox, 300);
       }
     } catch (e) {
-      log("⚠️ " + (e?.message || e));
+      log("⚠️ " + (e && e.message ? e.message : e));
     }
   }, 800);
 }, 50);
