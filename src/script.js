@@ -11,7 +11,6 @@ if (window.alt1) {
   document.body.innerHTML =
     `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
 }
-
 // --- tiny logger (goes into #output) -----------------------------------------
 function log(msg) {
   const out = document.getElementById("output");
