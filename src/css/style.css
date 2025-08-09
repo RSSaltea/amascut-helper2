@@ -265,15 +265,17 @@ a.alert {
   color: #fff;
 }
 
-/* Role color variants */
+#spec tr:nth-child(n+2) { display: none; }
+
+/* Role color variants (forced so they override the base row background) */
 .attacks tr.role-range { 
-  background: linear-gradient(#0f3010, #0b8f0b);
+  background: linear-gradient(#0f3010, #0b8f0b) !important;
 }
 .attacks tr.role-magic { 
-  background: linear-gradient(#0b1026, #1f6aff);
+  background: linear-gradient(#0b1026, #1f6aff) !important;
 }
 .attacks tr.role-melee { 
-  background: linear-gradient(#301010, #ff3b3b);
+  background: linear-gradient(#301010, #ff3b3b) !important;
 }
 
 /* Selected (top) row emphasis */
