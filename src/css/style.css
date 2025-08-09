@@ -66,11 +66,13 @@ div.headerTitle:after {
 
 /* Panel that holds the logs */
 .logs { 
-  margin-top: 8px;
+  margin-top: 6px; /* pick 6px or 8px, whichever looks better */
   background: rgba(0,0,0,.35);
   border: 1px solid #513015;
   border-radius: 4px;
+  width: 220px; /* compact */
 }
+
 .hidden { display:none; }
 
 .logs-header {
@@ -104,15 +106,13 @@ div.headerTitle:after {
   padding: 0 10px;
 }
 
-/* make the logs panel compact and visually “attached” to the button */
-.logs {
-  width: 220px;            /* smaller box */
-  margin-top: 6px;
-}
 .logs-body {
-  max-height: 90px;        /* shorter scroll area */
+  max-height: 90px;
+  overflow-y: auto;
+  font-size: 11px;
+  padding: 6px 8px;
+  color: #cfd6dc;
 }
-
 
 /* little scroll-to-bottom button */
 .log-scroll {
@@ -125,15 +125,6 @@ div.headerTitle:after {
   color: #ddd;
 }
 .log-scroll:hover { filter: brightness(1.15); }
-
-/* Scrollable body */
-.logs-body {
-  max-height: 140px;          /* adjust if you want */
-  overflow-y: auto;
-  font-size: 11px;
-  padding: 6px 8px;
-  color: #cfd6dc;
-}
 
 .nisbutton{height:32px; position:relative; background:url('https://runeapps.org/nis/alt1-currentskin/nisbutton.png') 0px -100% / 20px 400% repeat content-box; cursor:pointer; text-align:center; color:#000; font-family:'trajan-pro-3'; text-shadow:1px 1px 2px #ECC622; font-size:18px; margin:5px; padding:0px 12px; line-height:32px; user-select:none; -webkit-user-select:none;}
 div.header .nisseperator {
