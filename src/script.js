@@ -120,15 +120,21 @@ function updateUI(key) {
 // --- Chatbox OCR wiring -------------------------------------------------------
 const reader = new Chatbox.default();
 
-// Text color set: narrow to the lime the boss speaks in + common whites
-const LIME = A1lib.mixColor(153, 255, 153);       // boss speech
-const WHITE = A1lib.mixColor(255, 255, 255);
-const PUBBLU = A1lib.mixColor(127, 169, 255);
+// Broader palette: white, blue, yellows, lime/green
+const COLORS = [
+  A1lib.mixColor(255, 255, 255), // white
+  A1lib.mixColor(127, 169, 255), // public chat blue
+  A1lib.mixColor(255, 255, 0),   // bright yellow
+  A1lib.mixColor(255, 199, 0),   // RS-ish yellow/orange
+  A1lib.mixColor(153, 255, 153), // lime
+  A1lib.mixColor(0, 255, 0)      // green
+];
 
 reader.readargs = {
-  colors: [LIME, WHITE, PUBBLU],
+  colors: COLORS,
   backwards: true
 };
+
 
 function showSelected(chat) {
   try {
@@ -146,27 +152,39 @@ let lastSig = "";
 let lastAt = 0;
 
 function findKeyInText(text) {
-  const t = text.toLowerCase();
-  if (t.includes(" grovel")) return "grovel";
-  if (t.includes(" pathetic")) return "pathetic";
-  if (t.includes(" weak")) return "weak";
+  const t = (text || "").toLowerCase();
+  if (/\bgrovel\b/.test(t))   return "grovel";
+  if (/\bpathetic\b/.test(t)) return "pathetic";
+  if (/\bweak\b/.test(t))     return "weak";
   return null;
 }
+
 
 function readChatbox() {
   let segs = [];
   try { segs = reader.read() || []; } catch { return; }
   if (!segs.length) return;
 
-  // Gather most recent ~8 lines, strip timestamps and names
+  // recent lines, strip [hh:mm:ss] and speaker
   const lines = segs
     .map(s => (s.text || "").trim())
     .filter(Boolean)
-    .map(t => t.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, "")) // remove [hh:mm:ss]
-    .map(t => t.replace(/^amascut,\s*the\s*devourer:\s*/i, "")); // remove speaker
+    .map(t => t.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, ""))
+    .map(t => t.replace(/^amascut,\s*the\s*devourer:\s*/i, ""));
 
-  const joined = (" " + lines.slice(-8).join(" ") + " ").toLowerCase();
+  const joined = lines.slice(-8).join(" ");
   let key = findKeyInText(joined);
+
+  // Fallback: check each segment individually (more robust)
+  if (!key) {
+    for (const s of segs) {
+      const t = (s.text || "")
+        .replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, "")
+        .replace(/^.*?:\s*/, ""); // strip any speaker
+      key = findKeyInText(t);
+      if (key) break;
+    }
+  }
   if (!key) return;
 
   const now = Date.now();
