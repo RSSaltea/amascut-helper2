@@ -189,6 +189,7 @@ let lastSig = "";
 let lastAt = 0;
 
 function onAmascutLine(full, lineId) {
+  // de-dupe: skip if already handled
   if (lineId && seenLineIds.has(lineId)) return;
   if (lineId) {
     seenLineIds.add(lineId);
@@ -199,38 +200,60 @@ function onAmascutLine(full, lineId) {
     }
   }
 
-  const norm = full.toLowerCase();
+  const raw = full;                 // preserve case
+  const low = full.toLowerCase();   // lowercase for insensitive checks
+
+  // ---- key detection ----
   let key = null;
-  if (norm.includes("grovel")) key = "grovel";
-  else if (norm.includes("weak")) key = "weak";
-  else if (norm.includes("pathetic")) key = "pathetic";
-  else if (norm.includes("tear them apart")) key = "tear";
+  if (raw.includes("Grovel")) key = "grovel";
+  else if (/\bWeak\b/.test(raw)) key = "weak"; // case-sensitive match for 'Weak'
+  else if (raw.includes("Pathetic")) key = "pathetic";
+  else if (low.includes("tear them apart")) key = "tear";
+  else if (low.includes("tumeken's heart delivered")) key = "barricadeHeart";
+  else if (raw.includes("I WILL NOT BE SUBJUGATED")) key = "notSubjugated";
   if (!key) return;
 
+  // prevent rapid re-triggers of the same line
   const now = Date.now();
-  const sig = key + "|" + norm.slice(-80);
+  const sig = key + "|" + raw.slice(-80);
   if (sig === lastSig && now - lastAt < 1200) return;
   lastSig = sig;
   lastAt = now;
 
-if (key === "tear") {
-  // Voke → Reflect immediately, 6→1 countdown
-  startCountdown("Voke → Reflect", 8);
+  if (key === "tear") {
+    // Voke → Reflect immediately, 8→1 countdown
+    startCountdown("Voke → Reflect", 8);
 
-  // After 6s finishes, wait 2s, then Barricade 31→1
-  countdownTimers.push(setTimeout(() => {
-    startCountdown("Barricade", 10);
+    // After 8s finishes + 2s, Barricade 10→1
+    countdownTimers.push(setTimeout(() => {
+      startCountdown("Barricade", 10);
+      countdownTimers.push(setTimeout(() => {
+        resetUI();
+        log("↺ UI reset");
+      }, 10000));
+    }, 10000)); // 8s countdown + 2s pause
 
-    // After the 31s countdown finishes, reset
+  } else if (key === "barricadeHeart") {
+    // Start a Barricade 12s countdown, without interrupting other timers
+    startCountdown("Barricade", 12);
     countdownTimers.push(setTimeout(() => {
       resetUI();
       log("↺ UI reset");
-    }, 10000)); // 31s for Barricade countdown
+    }, 12000));
 
-  }, 10000)); // 6s (countdown) + 2s pause
-} else {
-  updateUI(key);
+} else if (key === "notSubjugated") {
+  // Show instruction message for 8s, no countdown cancel
+  showSingleRow("Magic Prayer → Devo → Reflect → Melee Prayer");
+  setTimeout(() => {
+    resetUI();
+    log("↺ UI reset");
+  }, 8000);
 }
+  else {
+    // Normal Grovel / Weak / Pathetic update (overwrite old countdowns)
+    cancelCountdowns();
+    updateUI(key);
+  }
 }
 
 // --------- Read loop ----------
