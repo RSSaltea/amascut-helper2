@@ -265,7 +265,7 @@ a.alert {
   color: #fff;
 }
 
-#spec tr:nth-child(n+2) { display: none; }
+#spec tr:nth-child(n+2){ display:none; }
 
 /* Role color variants (forced so they override the base row background) */
 .attacks tr.role-range { 
