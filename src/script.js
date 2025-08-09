@@ -50,14 +50,14 @@ function showSingleRow(text) {
     if (c0) c0.textContent = text;
     rows[0].style.display = "table-row";
     rows[0].classList.remove("role-range", "role-magic", "role-melee");
-    rows[0].classList.add("selected", "callout", "flash"); // <- added
+    rows[0].classList.add("selected", "callout", "flash");
   }
 
   for (let i = 1; i < rows.length; i++) {
     const c = rows[i].querySelector("td");
     if (c) c.textContent = "";
     rows[i].style.display = "none";
-    rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected", "callout", "flash"); // <- ensure cleared
+    rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected", "callout", "flash");
   }
 
   log(`✅ ${text}`);
@@ -130,22 +130,22 @@ function updateUI(key) {
   if (rows[1]) rows[1].style.display = "table-row";
   if (rows[2]) rows[2].style.display = "table-row";
 
-rows.forEach((row, i) => {
-  const role = order[i] || "";
-  const cell = row.querySelector("td");
-  if (cell) cell.textContent = role;
+  rows.forEach((row, i) => {
+    const role = order[i] || "";
+    const cell = row.querySelector("td");
+    if (cell) cell.textContent = role;
 
-  // clear any callout styling
-  row.classList.remove("callout", "flash");
+    // clear any callout styling
+    row.classList.remove("callout", "flash");
 
-  // color + emphasis
-  row.classList.remove("role-range", "role-magic", "role-melee");
-  if (role === "Range") row.classList.add("role-range");
-  else if (role === "Magic") row.classList.add("role-magic");
-  else if (role === "Melee") row.classList.add("role-melee");
+    // color + emphasis
+    row.classList.remove("role-range", "role-magic", "role-melee");
+    if (role === "Range") row.classList.add("role-range");
+    else if (role === "Magic") row.classList.add("role-magic");
+    else if (role === "Melee") row.classList.add("role-melee");
 
-  row.classList.toggle("selected", i === 0);
-});
+    row.classList.toggle("selected", i === 0);
+  });
 
   log(`✅ ${RESPONSES[key]}`);
 
@@ -184,12 +184,104 @@ function firstNonWhiteColor(seg) {
   return null;
 }
 
+// ==============================
+// Settings (UI + persistence)
+// ==============================
+
+const SETTINGS_DEFAULT = {
+  role: "Base",         // "DPS" | "Base"
+  bend: "Voke",         // "Voke" | "Immort"
+  scarabs: "Barricade", // "Barricade" | "Dive"
+};
+
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem("amascut.settings") || "null");
+    return Object.assign({}, SETTINGS_DEFAULT, s || {});
+  } catch {
+    return { ...SETTINGS_DEFAULT };
+  }
+}
+
+function saveSettings(s) {
+  try { localStorage.setItem("amascut.settings", JSON.stringify(s)); } catch {}
+}
+
+let SETTINGS = loadSettings();
+
+// inject minimal UI (cog + panel) without touching your HTML/CSS files
+(function injectSettingsUI(){
+  const style = document.createElement("style");
+  style.textContent = `
+    .ah-cog{position:fixed;top:6px;right:8px;z-index:11000;font-size:16px;opacity:.8;background:#222;
+      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 6px;line-height:1;}
+    .ah-cog:hover{opacity:1}
+    .ah-panel{position:fixed;top:30px;right:8px;z-index:11000;background:#1b1b1b;border:1px solid #444;
+      border-radius:6px;padding:8px 10px;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.5);display:none}
+    .ah-row{display:flex;align-items:center;gap:8px;margin:6px 0}
+    .ah-row label{min-width:95px;font-size:12px;opacity:.9}
+    .ah-panel select{flex:1;background:#111;color:#fff;border:1px solid #555;border-radius:4px;padding:3px}
+    .ah-tip{border-bottom:1px dotted #aaa;cursor:help}
+  `;
+  document.head.appendChild(style);
+
+  const cog = document.createElement("button");
+  cog.className = "ah-cog";
+  cog.title = "Settings";
+  cog.textContent = "⚙️";
+  document.body.appendChild(cog);
+
+  const panel = document.createElement("div");
+  panel.className = "ah-panel";
+  panel.innerHTML = `
+    <div class="ah-row">
+      <label>Role</label>
+      <select id="ah-role">
+        <option value="DPS">DPS</option>
+        <option value="Base">Base</option>
+      </select>
+    </div>
+    <div class="ah-row">
+      <label><span class="ah-tip" title="How do you plan to deal with Bend the knee mechanic?">Bend the knee</span></label>
+      <select id="ah-bend">
+        <option value="Voke">Voke</option>
+        <option value="Immort">Immort</option>
+      </select>
+    </div>
+    <div class="ah-row">
+      <label><span class="ah-tip" title="How do you plan to deal with Scarabs?">Scarabs</span></label>
+      <select id="ah-scarabs">
+        <option value="Barricade">Barricade</option>
+        <option value="Dive">Dive</option>
+      </select>
+    </div>
+  `;
+  document.body.appendChild(panel);
+
+  // set initial values
+  panel.querySelector("#ah-role").value = SETTINGS.role;
+  panel.querySelector("#ah-bend").value = SETTINGS.bend;
+  panel.querySelector("#ah-scarabs").value = SETTINGS.scarabs;
+
+  // events
+  cog.addEventListener("click", () => {
+    panel.style.display = panel.style.display === "none" ? "block" : "none";
+  });
+  function updateFromUI(){
+    SETTINGS.role = panel.querySelector("#ah-role").value;
+    SETTINGS.bend = panel.querySelector("#ah-bend").value;
+    SETTINGS.scarabs = panel.querySelector("#ah-scarabs").value;
+    saveSettings(SETTINGS);
+    log(`⚙️ Settings → role=${SETTINGS.role}, bend=${SETTINGS.bend}, scarabs=${SETTINGS.scarabs}`);
+  }
+  panel.addEventListener("change", updateFromUI);
+})();
+
 // --------- Debouncer ----------
 let lastSig = "";
 let lastAt = 0;
 
 function onAmascutLine(full, lineId) {
-  // de-dupe: skip if already handled
   if (lineId && seenLineIds.has(lineId)) return;
   if (lineId) {
     seenLineIds.add(lineId);
@@ -200,59 +292,94 @@ function onAmascutLine(full, lineId) {
     }
   }
 
-  const raw = full;                 // preserve case
-  const low = full.toLowerCase();   // lowercase for insensitive checks
+  const raw = full;               // preserve case
+  const low = full.toLowerCase(); // helper for insensitive checks
 
-  // ---- key detection ----
+  // ---- key detection (Weak is case-sensitive) ----
   let key = null;
   if (raw.includes("Grovel")) key = "grovel";
-  else if (/\bWeak\b/.test(raw)) key = "weak"; // case-sensitive match for 'Weak'
+  else if (/\bWeak\b/.test(raw)) key = "weak";
   else if (raw.includes("Pathetic")) key = "pathetic";
   else if (low.includes("tear them apart")) key = "tear";
   else if (low.includes("tumeken's heart delivered")) key = "barricadeHeart";
   else if (raw.includes("I WILL NOT BE SUBJUGATED")) key = "notSubjugated";
   if (!key) return;
 
-  // prevent rapid re-triggers of the same line
+  // light debouncer by content signature
   const now = Date.now();
   const sig = key + "|" + raw.slice(-80);
   if (sig === lastSig && now - lastAt < 1200) return;
   lastSig = sig;
   lastAt = now;
 
+  // ==============================
+  // Settings-driven behavior
+  // ==============================
   if (key === "tear") {
-    // Voke → Reflect immediately, 8→1 countdown
-    startCountdown("Voke → Reflect", 8);
+    // Decide first step (Bend the knee phase)
+    // - DPS + Voke       -> Voke Reflect (countdown)
+    // - DPS + Immort     -> do nothing
+    // - Base + Immort    -> Immortality (countdown)
+    // - Base + Voke      -> do nothing
+    let first = "none"; // "voke" | "immort" | "none"
+    if (SETTINGS.role === "DPS" && SETTINGS.bend === "Voke") first = "voke";
+    else if (SETTINGS.role === "Base" && SETTINGS.bend === "Immort") first = "immort";
 
-    // After 8s finishes + 2s, Barricade 10→1
+    const firstDuration = (first === "voke" || first === "immort") ? 8 : 0;
+
+    if (first === "voke") {
+      startCountdown("Voke → Reflect", 8);
+    } else if (first === "immort") {
+      startCountdown("Immortality", 8);
+    } // else none
+
+    // Scarabs follow after the first phase completes (or after 2s if none)
+    const scarabDelayMs = (firstDuration ? (firstDuration + 2) : 2) * 1000;
+
     countdownTimers.push(setTimeout(() => {
-      startCountdown("Barricade", 10);
-      countdownTimers.push(setTimeout(() => {
-        resetUI();
-        log("↺ UI reset");
-      }, 10000));
-    }, 10000)); // 8s countdown + 2s pause
+      if (SETTINGS.scarabs === "Barricade") {
+        // Your current default: Barricade 10s
+        startCountdown("Barricade", 10);
+        countdownTimers.push(setTimeout(() => {
+          resetUI();
+          log("↺ UI reset");
+        }, 10000));
+      } else {
+        // Dive: immediate, no countdown, reset after 8s
+        showSingleRow("Dive");
+        countdownTimers.push(setTimeout(() => {
+          resetUI();
+          log("↺ UI reset");
+        }, 8000));
+      }
+    }, scarabDelayMs));
 
   } else if (key === "barricadeHeart") {
-    // Start a Barricade 12s countdown, without interrupting other timers
+    // Tumeken's heart delivered → Barricade 12s (independent)
     startCountdown("Barricade", 12);
     countdownTimers.push(setTimeout(() => {
       resetUI();
       log("↺ UI reset");
     }, 12000));
 
-} else if (key === "notSubjugated") {
-  // Show instruction message for 8s, no countdown cancel
-  showSingleRow("Magic Prayer → Devo → Reflect → Melee Prayer");
-  setTimeout(() => {
-    resetUI();
-    log("↺ UI reset");
-  }, 8000);
-}
-  else {
-    // Normal Grovel / Weak / Pathetic update (overwrite old countdowns)
-    cancelCountdowns();
-    updateUI(key);
+  } else if (key === "notSubjugated") {
+    // Instruction line, reset after 8s (independent)
+    showSingleRow("Magic Prayer → Devo → Reflect → Melee Prayer");
+    setTimeout(() => {
+      resetUI();
+      log("↺ UI reset");
+    }, 8000);
+
+  } else {
+    // Grovel/Weak/Pathetic depend on Role:
+    // - DPS  -> do nothing
+    // - Base -> normal 3-row behavior
+    if (SETTINGS.role === "Base") {
+      cancelCountdowns();
+      updateUI(key);
+    } else {
+      log(`(DPS mode) Ignored ${key}`);
+    }
   }
 }
 
