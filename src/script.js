@@ -91,7 +91,7 @@ function updateUI(key) {
   resetTimerId = setTimeout(() => {
     resetUI();
     log("↺ UI reset");
-  }, 6000);
+  }, 5000);
 }
 
 function resetUI() {
