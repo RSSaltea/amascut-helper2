@@ -20,33 +20,18 @@ if (window.alt1) {
 
 const reader = new Chatbox.default();
 
-// --- colors ---
-const AMASCUT_NAME = A1lib.mixColor(69, 131, 145);    // Name color
-const AMASCUT_TEXT = A1lib.mixColor(153, 255, 153);   // Speech color
+// Amascut name color
+const AMASCUT_COLOR = A1lib.mixColor(69, 131, 145);
+
+// Amascut text color (green)
+const AMASCUT_TEXT_COLOR = A1lib.mixColor(153, 255, 153);
+
+// White for punctuation/timestamps
 const WHITE = A1lib.mixColor(255, 255, 255);
 
-const GENERAL_CHAT = [
-  WHITE,
-  A1lib.mixColor(127,169,255),
-  A1lib.mixColor(102,152,255),
-  A1lib.mixColor(67,188,188),
-  A1lib.mixColor(255,255,0),
-  A1lib.mixColor(235,47,47),
-  A1lib.mixColor(0,111,0),
-  A1lib.mixColor(0,255,0),
-];
-
-// Only need these colors for OCR
 reader.readargs = {
-  colors: [AMASCUT_NAME, AMASCUT_TEXT, WHITE, ...GENERAL_CHAT],
+  colors: [AMASCUT_COLOR, AMASCUT_TEXT_COLOR, WHITE],
   backwards: true
-};
-
-// --- responses ---
-const RESPONSES = {
-  weak:     "Range > Magic > Melee",
-  grovel:   "Magic > Melee > Range",
-  pathetic: "Melee > Range > Magic",
 };
 
 function showSelected(chat) {
@@ -60,57 +45,11 @@ function showSelected(chat) {
   } catch {}
 }
 
-function updateUI(key) {
-  const order = RESPONSES[key].split(" > ");
-  const rows = document.querySelectorAll("#spec tr");
-  rows.forEach((row, i) => {
-    const cell = row.querySelector("td");
-    if (cell) cell.textContent = order[i] || "";
-    row.classList.toggle("selected", i === 0);
-  });
-  log(`🎯 UI set to: ${RESPONSES[key]}`);
-}
-
-// --- merge lines from Amascut ---
-function mergeAmascutLines(segs) {
-  let merged = [];
-  let buffer = "";
-
-  for (let seg of segs) {
-    if (!seg.fragments || seg.fragments.length === 0) continue;
-    const firstColor = seg.fragments[0].color;
-    const text = seg.text.trim();
-
-    if (firstColor === A1lib.unmixColor(AMASCUT_NAME) && /Amascut/i.test(text)) {
-      // flush old buffer
-      if (buffer) {
-        merged.push(buffer);
-        buffer = "";
-      }
-      // remove "Amascut, the Devourer: " from start
-      buffer = text.replace(/^Amascut.*?:\s*/, "");
-    } else if (buffer && firstColor === A1lib.unmixColor(AMASCUT_TEXT)) {
-      // continuation of her speech
-      buffer += " " + text;
-    } else {
-      // not Amascut, flush buffer if any
-      if (buffer) {
-        merged.push(buffer);
-        buffer = "";
-      }
-    }
-  }
-
-  if (buffer) merged.push(buffer);
-
-  return merged;
-}
-
-let lastSig = "";
+let lastMsg = "";
 let lastAt = 0;
 
 function readChatbox() {
-  let segs = [];
+  let segs;
   try {
     segs = reader.read() || [];
   } catch (e) {
@@ -119,23 +58,40 @@ function readChatbox() {
   }
   if (!segs.length) return;
 
-  const mergedMsgs = mergeAmascutLines(segs);
+  // Find any line starting with Amascut's name color
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    if (!s.fragments || s.fragments.length === 0) continue;
 
-  for (let msg of mergedMsgs) {
-    const lower = msg.toLowerCase();
-    let key = null;
-    if (lower.includes("weak")) key = "weak";
-    else if (lower.includes("grovel")) key = "grovel";
-    else if (lower.includes("pathetic")) key = "pathetic";
+    const firstColor = A1lib.mixColor(
+      s.fragments[0].color[0],
+      s.fragments[0].color[1],
+      s.fragments[0].color[2]
+    );
 
-    if (key) {
+    if (firstColor === AMASCUT_COLOR && s.text.includes("Amascut")) {
+      let fullMsg = s.text;
+
+      // Merge following green lines
+      for (let j = i + 1; j < segs.length; j++) {
+        if (!segs[j].fragments || segs[j].fragments.length === 0) break;
+        const fragColor = A1lib.mixColor(
+          segs[j].fragments[0].color[0],
+          segs[j].fragments[0].color[1],
+          segs[j].fragments[0].color[2]
+        );
+        if (fragColor === AMASCUT_TEXT_COLOR) {
+          fullMsg += " " + segs[j].text;
+        } else {
+          break;
+        }
+      }
+
       const now = Date.now();
-      const sig = key + "|" + msg;
-      if (sig !== lastSig || (now - lastAt) > 1500) {
-        lastSig = sig;
+      if (fullMsg !== lastMsg || now - lastAt > 1500) {
+        lastMsg = fullMsg;
         lastAt = now;
-        log(`✅ matched ${key} in: ${msg}`);
-        updateUI(key);
+        log(`💬 Amascut says: ${fullMsg}`);
       }
     }
   }
@@ -149,7 +105,6 @@ setTimeout(() => {
         reader.find();
       } else {
         clearInterval(h);
-
         reader.pos.mainbox = reader.pos.boxes[0];
         log("✅ chatbox found");
         showSelected(reader.pos);
