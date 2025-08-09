@@ -278,6 +278,15 @@ a.alert {
   background: linear-gradient(#301010, #ff3b3b) !important;
 }
 
+/* Dark grey callout + subtle flash for VOKE/REFLECT & BARRICADE */
+@keyframes subtleFlash {
+  0% { filter: brightness(1); }
+  50% { filter: brightness(1.25); }
+  100% { filter: brightness(1); }
+}
+.attacks tr.callout { background: #2a2a2a !important; }
+.attacks tr.flash { animation: subtleFlash 1s ease-in-out infinite; }
+
 /* Selected (top) row emphasis */
 .attacks tr.selected {
   box-shadow: inset 0 0 0 2px #ffffff22, 0 0 10px #000 inset;
