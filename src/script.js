@@ -333,26 +333,27 @@ function onAmascutLine(full, lineId) {
       startCountdown("Immortality", 8);
     } // else none
 
-    // Scarabs follow after the first phase completes (or after 2s if none)
-    const scarabDelayMs = (firstDuration ? (firstDuration + 2) : 2) * 1000;
+// Scarabs follow after the first phase completes (or after 2s if none)
+const scarabDelayMs = (firstDuration ? (firstDuration + 2) : 2) * 1000;
 
+countdownTimers.push(setTimeout(() => {
+  if (SETTINGS.scarabs === "Barricade") {
+    // Base + Barricade → 18s, else 10s
+    const barricadeTime = (SETTINGS.role === "Base") ? 18 : 10;
+    startCountdown("Barricade", barricadeTime);
     countdownTimers.push(setTimeout(() => {
-      if (SETTINGS.scarabs === "Barricade") {
-        // Your current default: Barricade 10s
-        startCountdown("Barricade", 10);
-        countdownTimers.push(setTimeout(() => {
-          resetUI();
-          log("↺ UI reset");
-        }, 10000));
-      } else {
-        // Dive: immediate, no countdown, reset after 8s
-        showSingleRow("Dive");
-        countdownTimers.push(setTimeout(() => {
-          resetUI();
-          log("↺ UI reset");
-        }, 8000));
-      }
-    }, scarabDelayMs));
+      resetUI();
+      log("↺ UI reset");
+    }, barricadeTime * 1000));
+  } else {
+    // Dive: immediate, no countdown, reset after 8s
+    showSingleRow("Dive");
+    countdownTimers.push(setTimeout(() => {
+      resetUI();
+      log("↺ UI reset");
+    }, 8000));
+  }
+}, scarabDelayMs));
 
   } else if (key === "barricadeHeart") {
     // Tumeken's heart delivered → Barricade 12s (independent)
