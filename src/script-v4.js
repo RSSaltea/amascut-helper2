@@ -1,6 +1,6 @@
 A1lib.identifyApp("appconfig.json");
 
-// logger
+// ---------- logger ----------
 function log(msg) {
   console.log(msg);
   const out = document.getElementById("output");
@@ -11,7 +11,7 @@ function log(msg) {
   while (out.childElementCount > 50) out.removeChild(out.lastChild);
 }
 
-// Alt1 / browser
+// ---------- Alt1 detection ----------
 if (window.alt1) {
   alt1.identifyAppUrl("./appconfig.json");
 } else {
@@ -20,15 +20,19 @@ if (window.alt1) {
     `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
 }
 
-// reader
-const reader = new Chatbox.default();
+// ---------- readers ----------
+const reader = new Chatbox.default();       // full-color reader (for locating/robust OCR)
+const greenReader = new Chatbox.default();  // GREEN-ONLY reader (for the boss keywords)
 
-// turn off diff filtering (we’ll scan all boxes every tick)
-reader.diffRead = false;
-reader.diffReadUseTimestamps = false;
-reader.minoverlap = 0;
+// turn off diff filtering (we poll continuously)
+for (const r of [reader, greenReader]) {
+  r.diffRead = false;
+  r.diffReadUseTimestamps = false;
+  r.minoverlap = 0;
+}
 
-/* -------- colors (broad) -------- */
+/* ---------- color sets ---------- */
+// Wide set so the general reader can find/track reliably
 const ALL_CHAT_COLORS = [
   [0,255,0],[0,255,255],[0,175,255],[0,0,255],[255,82,86],
   [159,255,159],[0,111,0],[255,143,143],[255,152,31],[255,111,0],
@@ -37,9 +41,14 @@ const ALL_CHAT_COLORS = [
   [255,0,0],[69,178,71],[164,153,125],[215,195,119],[255,255,176],
 ].map(c => A1lib.mixColor(c[0], c[1], c[2]));
 
-reader.readargs = { colors: ALL_CHAT_COLORS, backwards: true };
+// STRICT green for keywords: exactly 153,255,153 plus white for punctuation/colon
+const KEYWORD_GREEN = A1lib.mixColor(153,255,153);
+const WHITE = A1lib.mixColor(255,255,255);
 
-/* -------- nudges (no images) -------- */
+reader.readargs = { colors: ALL_CHAT_COLORS, backwards: true };
+greenReader.readargs = { colors: [KEYWORD_GREEN, WHITE], backwards: true };
+
+/* ---------- nudges (used by both readers; no images) ---------- */
 function addFrag(ctx, frag) {
   if (ctx.forward) {
     ctx.fragments.push(frag);
@@ -51,14 +60,15 @@ function addFrag(ctx, frag) {
     ctx.leftx = frag.xstart;
   }
 }
+
 // order: "[" → digits → "] " → pick body color → ":" → punctuation
 const forwardnudges = [
   { match: /^$/, fn(ctx){ const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],ctx.rightx,ctx.baseliney,false,false); if(c?.chr==="["){ addFrag(ctx,{color:[255,255,255],index:-1,text:"[",xstart:ctx.rightx,xend:ctx.rightx+c.basechar.width}); return true; } } },
   { match: /.*/, fn(ctx){ const l=OCR.readLine(ctx.imgdata,ctx.font,ctx.colors,ctx.rightx,ctx.baseliney,true,false); if(l.text){ l.fragments.forEach(f=>addFrag(ctx,f)); return true; } } },
   { match: /\[[\w: ]+$/, fn(ctx){ const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],ctx.rightx,ctx.baseliney,false,false); if(c?.chr==="]"){ addFrag(ctx,{color:[255,255,255],index:-1,text:"] ",xstart:ctx.rightx,xend:ctx.rightx+c.basechar.width+ctx.font.spacewidth}); return true; } } },
   { match: /(^|\]|:)( ?)$/i, fn(ctx,m){ const addspace=!m[2]; const x=ctx.rightx+(addspace?ctx.font.spacewidth:0);
-      let best=null,col=null; for(const c of ctx.colors){ const info=OCR.readChar(ctx.imgdata,ctx.font,c,x,ctx.baseliney,false,false); if(info && (!best || info.sizescore<best.sizescore)){ best=info; col=c; } }
-      if(col){ const l=OCR.readLine(ctx.imgdata,ctx.font,col,x,ctx.baseliney,true,false); if(l.text){ if(addspace) addFrag(ctx,{color:[255,255,255],index:-1,text:" ",xstart:ctx.rightx,xend:x}); l.fragments.forEach(f=>addFrag(ctx,f)); return true; } } } },
+      let best=null,col=null; for (const c of ctx.colors){ const info=OCR.readChar(ctx.imgdata,ctx.font,c,x,ctx.baseliney,false,false); if(info && (!best || info.sizescore<best.sizescore)){ best=info; col=c; } }
+      if (col){ const l=OCR.readLine(ctx.imgdata,ctx.font,col,x,ctx.baseliney,true,false); if(l.text){ if(addspace) addFrag(ctx,{color:[255,255,255],index:-1,text:" ",xstart:ctx.rightx,xend:x}); l.fragments.forEach(f=>addFrag(ctx,f)); return true; } } } },
   { match: /\w$/, fn(ctx){ const x=ctx.rightx; const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],x,ctx.baseliney,false,true); if(c?.chr === ":"){ addFrag(ctx,{color:[255,255,255],index:-1,text:": ",xstart:x,xend:x+c.basechar.width+ctx.font.spacewidth}); return true; } } },
   { match: /\S$/, fn(ctx){ const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],ctx.rightx,ctx.baseliney,false,false); if(!c) return;
       if([",",".","!","?"].includes(c.chr)){ addFrag(ctx,{color:[255,255,255],index:-1,text:c.chr,xstart:ctx.rightx,xend:ctx.rightx+c.basechar.width});
@@ -66,20 +76,26 @@ const forwardnudges = [
         if(sp?.chr===" "){ addFrag(ctx,{color:[255,255,255],index:-1,text:" ",xstart:ctx.rightx,xend:ctx.rightx+ctx.font.spacewidth}); }
         return true; } } },
 ];
+
 const backwardnudges = [
   { match: /.*/, fn(ctx){ const l=OCR.readLine(ctx.imgdata,ctx.font,ctx.colors,ctx.leftx,ctx.baseliney,false,true); if(l.text){ l.fragments.reverse().forEach(f=>addFrag(ctx,f)); return true; } } },
   { match: /^\w/, fn(ctx){ let x=ctx.leftx-ctx.font.spacewidth; const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],x,ctx.baseliney,false,true); if(c?.chr === ":"){ x-=c.basechar.width; addFrag(ctx,{color:[255,255,255],index:-1,text:": ",xstart:x,xend:x+c.basechar.width+ctx.font.spacewidth}); return true; } } },
   { match: /^\S/, fn(ctx){ let x=ctx.leftx-ctx.font.spacewidth; const c=OCR.readChar(ctx.imgdata,ctx.font,[255,255,255],x,ctx.baseliney,false,true); if(!c) return; if([",",".","!","?"].includes(c.chr)){ x-=c.basechar.width; addFrag(ctx,{color:[255,255,255],index:-1,text:c.chr+" ",xstart:x,xend:x+c.basechar.width+ctx.font.spacewidth}); return true; } } },
 ];
-reader.forwardnudges = forwardnudges;
-reader.backwardnudges = backwardnudges;
 
-/* -------- UI logic -------- */
+// attach to both readers
+for (const r of [reader, greenReader]) {
+  r.forwardnudges = forwardnudges;
+  r.backwardnudges = backwardnudges;
+}
+
+/* ---------- UI ---------- */
 const RESPONSES = {
   weak:     "Range > Magic > Melee",
   grovel:   "Magic > Melee > Range",
   pathetic: "Melee > Range > Magic",
 };
+
 function updateUI(key) {
   const order = RESPONSES[key].split(" > ");
   const rows = document.querySelectorAll("#spec tr");
@@ -90,6 +106,7 @@ function updateUI(key) {
   });
   log(`🎯 UI set to: ${RESPONSES[key]}`);
 }
+
 function showSelected(chat) {
   try {
     alt1.overLayRect(
@@ -101,7 +118,7 @@ function showSelected(chat) {
   } catch {}
 }
 
-/* -------- robust text matching -------- */
+/* ---------- matching ---------- */
 function normalize(s) {
   return s.toLowerCase()
     .replace(/[\[\]\.\',;:_\-!?()]/g, " ")
@@ -110,7 +127,8 @@ function normalize(s) {
     .replace(/\s+/g, " ")
     .trim();
 }
-let lastSig = ""; let lastAt = 0;
+
+let lastSig = "", lastAt = 0;
 function triggerUpdate(key, src) {
   const now = Date.now();
   const sig = key + "|" + src.slice(-120);
@@ -121,49 +139,44 @@ function triggerUpdate(key, src) {
   }
 }
 
-/* -------- read helpers -------- */
-// read every found chat box once per tick
-function readAllBoxes() {
-  if (!reader.pos) return [];
-  const backup = reader.pos.mainbox;
-  let all = [];
-  for (const box of reader.pos.boxes) {
-    try {
-      reader.pos.mainbox = box;
-      const segs = reader.read() || [];
-      // tag with type so we can debug which box produced it
-      for (const s of segs) all.push({ text: s.text, _type: box.type });
-    } catch {}
-  }
-  reader.pos.mainbox = backup;
-  return all;
-}
+/* ---------- polling ---------- */
+function readGreenKeywords() {
+  if (!reader.pos) return "";
 
-/* -------- polling -------- */
-function readChatbox() {
+  // make sure the greenReader looks at the same box geometry
+  greenReader.pos = reader.pos;
+
   let segs = [];
-  try { segs = readAllBoxes(); }
-  catch (e) { log("⚠️ read failed; Alt1 Pixel permission?"); return; }
-  if (!segs.length) return;
-
+  try { segs = greenReader.read() || []; } catch (e) { return ""; }
   const texts = segs.map(s => (s.text || "").trim()).filter(Boolean);
-  if (!texts.length) return;
-
-  // debug last few segments
-  log("segs: " + JSON.stringify(texts.slice(-8)));
+  if (!texts.length) return "";
 
   const full = texts.join(" ");
-  const norm = normalize(full);
+  // debug the green-only pass (last few bits)
+  log("green-segs: " + JSON.stringify(texts.slice(-6)));
 
-  // only react to Amascut lines to avoid false positives
-  if (/amascut/.test(norm) || /amascu/.test(norm)) {
-    if (/\bweak\b/.test(norm) || /\bwea?k\b/.test(norm))           return triggerUpdate("weak", norm);
-    if (/\bgrovel\b/.test(norm) || /\bgravel\b/.test(norm))        return triggerUpdate("grovel", norm);
-    if (/\bpathetic\b/.test(norm) || /\bpathet(ic)?\b/.test(norm)) return triggerUpdate("pathetic", norm);
-  }
+  return normalize(full);
 }
 
-// start
+function readChatbox() {
+  // First: locate chat / keep the general reader warm
+  let warm = [];
+  try { warm = reader.read() || []; } catch {}
+  if (!warm.length && !reader.pos) return;
+
+  // Now: GREEN-ONLY check for Amascut + keywords
+  const norm = readGreenKeywords();
+  if (!norm) return;
+
+  // Must mention Amascut (filters out green system lines like “The gods will protect…”)
+  if (!/\bamas?cu?t\b/.test(norm)) return;
+
+  if (/\bweak\b/.test(norm))            return triggerUpdate("weak", norm);
+  if (/\bgrovel\b/.test(norm))          return triggerUpdate("grovel", norm);
+  if (/\bpathetic\b/.test(norm))        return triggerUpdate("pathetic", norm);
+}
+
+// start loop
 setTimeout(() => {
   const h = setInterval(() => {
     try {
