@@ -72,7 +72,32 @@ const forwardnudges = [
       }
     }
   },
-  // 2) choose best color at start-of-body (after "]" or ":" or start)
+
+  // 2) generic forward body read (multi-color) — this pulls the timestamp digits
+  {
+    match: /.*/,
+    fn(ctx) {
+      const line = OCR.readLine(ctx.imgdata, ctx.font, ctx.colors, ctx.rightx, ctx.baseliney, true, false);
+      if (line.text) {
+        line.fragments.forEach(f => addFrag(ctx, f));
+        return true;
+      }
+    }
+  },
+
+  // 3) "] " at end of timestamp (white)
+  {
+    match: /\[[\w: ]+$/,
+    fn(ctx) {
+      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], ctx.rightx, ctx.baseliney, false, false);
+      if (c && c.chr === "]") {
+        addFrag(ctx, { color:[255,255,255], index:-1, text:"] ", xstart:ctx.rightx, xend:ctx.rightx + c.basechar.width + ctx.font.spacewidth });
+        return true;
+      }
+    }
+  },
+
+  // 4) choose best body color after "]" or ":" (so we lock onto green text)
   {
     match: /(^|\]|:)( ?)$/i,
     fn(ctx, m) {
@@ -96,28 +121,7 @@ const forwardnudges = [
       }
     }
   },
-  // 3) generic forward body read (multi-color)
-  {
-    match: /.*/,
-    fn(ctx) {
-      const line = OCR.readLine(ctx.imgdata, ctx.font, ctx.colors, ctx.rightx, ctx.baseliney, true, false);
-      if (line.text) {
-        line.fragments.forEach(f => addFrag(ctx, f));
-        return true;
-      }
-    }
-  },
-  // 4) "] " at end of timestamp (white)
-  {
-    match: /\[[\w: ]+$/,
-    fn(ctx) {
-      const c = OCR.readChar(ctx.imgdata, ctx.font, [255,255,255], ctx.rightx, ctx.baseliney, false, false);
-      if (c && c.chr === "]") {
-        addFrag(ctx, { color:[255,255,255], index:-1, text:"] ", xstart:ctx.rightx, xend:ctx.rightx + c.basechar.width + ctx.font.spacewidth });
-        return true;
-      }
-    }
-  },
+
   // 5) white ":" between name and body
   {
     match: /\w$/,
@@ -130,6 +134,7 @@ const forwardnudges = [
       }
     }
   },
+
   // 6) bridge white punctuation (comma/period/etc) inside names/text
   {
     match: /\S$/,
