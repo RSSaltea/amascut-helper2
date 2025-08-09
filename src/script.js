@@ -60,17 +60,26 @@ const RESPONSES = {
 };
 
 function updateUI(key) {
-  const order = RESPONSES[key].split(" > "); // e.g., ["Range","Magic","Melee"]
+  const order = RESPONSES[key].split(" > "); // ["Range","Magic","Melee"]
   const rows = document.querySelectorAll("#spec tr");
+
+  // unhide all three rows explicitly
+  if (rows[0]) rows[0].style.display = "table-row";
+  if (rows[1]) rows[1].style.display = "table-row";
+  if (rows[2]) rows[2].style.display = "table-row";
+
   rows.forEach((row, i) => {
     const role = order[i] || "";
     const cell = row.querySelector("td");
     if (cell) cell.textContent = role;
 
-   
-    row.style.display = "table-row";
-    applyRoleClass(row, role);
-    row.classList.toggle("selected", i === 0); // keep top emphasis on first in sequence
+    // color + emphasis
+    row.classList.remove("role-range", "role-magic", "role-melee");
+    if (role === "Range") row.classList.add("role-range");
+    else if (role === "Magic") row.classList.add("role-magic");
+    else if (role === "Melee") row.classList.add("role-melee");
+
+    row.classList.toggle("selected", i === 0);
   });
   log(`✅ ${RESPONSES[key]}`);
 }
