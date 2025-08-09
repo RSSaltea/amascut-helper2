@@ -149,6 +149,7 @@ function onAmascutLine(full) {
   if (norm.includes("grovel")) key = "grovel";
   else if (norm.includes("weak")) key = "weak";
   else if (norm.includes("pathetic")) key = "pathetic";
+  else if (norm.includes("tear them apart")) key = "tear";
   if (!key) return;
 
   const now = Date.now();
@@ -157,7 +158,93 @@ function onAmascutLine(full) {
   lastSig = sig;
   lastAt = now;
 
-  updateUI(key);
+  if (key === "tear") {
+    // schedule Voke → Reflect after 10s
+    setTimeout(() => {
+      showSingleRow("Voke → Reflect");
+
+      // schedule Barricade 5s later
+      setTimeout(() => {
+        showSingleRow("Barricade");
+
+        // schedule reset 6s after that
+        setTimeout(() => {
+          resetUI();
+          log("↺ UI reset");
+        }, 6000);
+
+      }, 5000);
+
+    }, 10000);
+
+  } else {
+    // normal Range/Magic/Melee updates
+    updateUI(key);
+  }
+}
+
+// helper to show only one row with a given label
+function onAmascutLine(full) {
+  const norm = full.toLowerCase();
+
+  let key = null;
+  if (norm.includes("grovel")) key = "grovel";
+  else if (norm.includes("weak")) key = "weak";
+  else if (norm.includes("pathetic")) key = "pathetic";
+  else if (norm.includes("tear them apart")) key = "tear";
+  if (!key) return;
+
+  const now = Date.now();
+  const sig = key + "|" + norm.slice(-80);
+  if (sig === lastSig && now - lastAt < 1200) return;
+  lastSig = sig;
+  lastAt = now;
+
+  if (key === "tear") {
+    // schedule Voke → Reflect after 10s
+    setTimeout(() => {
+      showSingleRow("Voke → Reflect");
+
+      // schedule Barricade 5s later
+      setTimeout(() => {
+        showSingleRow("Barricade");
+
+        // schedule reset 6s after that
+        setTimeout(() => {
+          resetUI();
+          log("↺ UI reset");
+        }, 6000);
+
+      }, 5000);
+
+    }, 10000);
+
+  } else {
+    // normal Range/Magic/Melee updates
+    updateUI(key);
+  }
+}
+
+// helper to show only one row with a given label
+function showSingleRow(text) {
+  const rows = document.querySelectorAll("#spec tr");
+
+  if (rows[0]) {
+    const c0 = rows[0].querySelector("td");
+    if (c0) c0.textContent = text;
+    rows[0].style.display = "table-row";
+    rows[0].classList.remove("role-range", "role-magic", "role-melee");
+    rows[0].classList.add("selected");
+  }
+
+  for (let i = 1; i < rows.length; i++) {
+    const c = rows[i].querySelector("td");
+    if (c) c.textContent = "";
+    rows[i].style.display = "none";
+    rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected");
+  }
+
+  log(`✅ ${text}`);
 }
 
 // --------- read loop ----------
