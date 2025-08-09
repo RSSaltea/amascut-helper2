@@ -67,8 +67,8 @@ function updateUI(key) {
     const cell = row.querySelector("td");
     if (cell) cell.textContent = role;
 
-    // reveal rows 2 & 3 once we have a callout
-    row.style.display = ""; // unhide all rows
+   
+    row.style.display = "table-row";
     applyRoleClass(row, role);
     row.classList.toggle("selected", i === 0); // keep top emphasis on first in sequence
   });
