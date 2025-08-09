@@ -1,5 +1,6 @@
 A1lib.identifyApp("appconfig.json");
 
+// simple logger
 function log(msg) {
   console.log(msg);
   const out = document.getElementById("output");
@@ -10,6 +11,7 @@ function log(msg) {
   while (out.childElementCount > 50) out.removeChild(out.lastChild);
 }
 
+// detect Alt1 / add link for browser
 if (window.alt1) {
   alt1.identifyAppUrl("./appconfig.json");
 } else {
@@ -18,8 +20,15 @@ if (window.alt1) {
     `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
 }
 
+// chat reader
 const reader = new Chatbox.default();
 
+// 🔧 stop “smart diff” filters from hiding lines
+reader.diffRead = false;
+reader.diffReadUseTimestamps = false;
+reader.minoverlap = 0;
+
+/* ---------- colors ---------- */
 const LIME_GREENS = [
   A1lib.mixColor(0,255,0),     // bright green
   A1lib.mixColor(145,255,145),
@@ -33,8 +42,8 @@ const LIME_GREENS = [
 ];
 
 const GENERAL_CHAT = [
-  A1lib.mixColor(255,255,255),  // white
-  A1lib.mixColor(127,169,255),  // public chat blue
+  A1lib.mixColor(255,255,255),  // white (timestamp / punctuation)
+  A1lib.mixColor(127,169,255),  // public blue
   A1lib.mixColor(102,152,255),  // drops blue
   A1lib.mixColor(67,188,188),   // teal
   A1lib.mixColor(255,255,0),    // yellow
@@ -46,7 +55,8 @@ reader.readargs = {
   backwards: true
 };
 
-// --- helper used by nudges ---
+/* ---------- lightweight nudges (no images) ---------- */
+
 function addFrag(ctx, frag) {
   if (ctx.forward) {
     ctx.fragments.push(frag);
@@ -59,9 +69,9 @@ function addFrag(ctx, frag) {
   }
 }
 
-/* ---------- nudges (ported & trimmed to match your script) ---------- */
+// order matters: [, digits, ] , pick color, colon, punctuation
 const forwardnudges = [
-  // 1) "[" at start of timestamp (white)
+  // "[" at start of timestamp (white)
   {
     match: /^$/,
     fn(ctx) {
@@ -73,7 +83,7 @@ const forwardnudges = [
     }
   },
 
-  // 2) generic forward body read (multi-color) — this pulls the timestamp digits
+  // pull timestamp digits etc. with multi-color read
   {
     match: /.*/,
     fn(ctx) {
@@ -85,7 +95,7 @@ const forwardnudges = [
     }
   },
 
-  // 3) "] " at end of timestamp (white)
+  // close timestamp: "] "
   {
     match: /\[[\w: ]+$/,
     fn(ctx) {
@@ -97,7 +107,7 @@ const forwardnudges = [
     }
   },
 
-  // 4) choose best body color after "]" or ":" (so we lock onto green text)
+  // choose best body color after ] or : or start
   {
     match: /(^|\]|:)( ?)$/i,
     fn(ctx, m) {
@@ -122,7 +132,7 @@ const forwardnudges = [
     }
   },
 
-  // 5) white ":" between name and body
+  // white ":" between name and body
   {
     match: /\w$/,
     fn(ctx) {
@@ -135,7 +145,7 @@ const forwardnudges = [
     }
   },
 
-  // 6) bridge white punctuation (comma/period/etc) inside names/text
+  // bridge white punctuation (comma/period/etc)
   {
     match: /\S$/,
     fn(ctx) {
@@ -155,7 +165,7 @@ const forwardnudges = [
 ];
 
 const backwardnudges = [
-  // 1) generic backward body read
+  // body (right-to-left)
   {
     match: /.*/,
     fn(ctx) {
@@ -166,7 +176,8 @@ const backwardnudges = [
       }
     }
   },
-  // 2) white ":" before the name (backward scan)
+
+  // white ":" before the name when scanning backward
   {
     match: /^\w/,
     fn(ctx) {
@@ -179,7 +190,8 @@ const backwardnudges = [
       }
     }
   },
-  // 3) bridge white punctuation when going backward
+
+  // bridge white punctuation when going backward
   {
     match: /^\S/,
     fn(ctx) {
@@ -196,26 +208,16 @@ const backwardnudges = [
   },
 ];
 
-// attach to reader
+// attach nudges
 reader.forwardnudges = forwardnudges;
 reader.backwardnudges = backwardnudges;
 
+/* ---------- app logic ---------- */
 const RESPONSES = {
   weak:     "Range > Magic > Melee",
   grovel:   "Magic > Melee > Range",
   pathetic: "Melee > Range > Magic",
 };
-
-function showSelected(chat) {
-  try {
-    alt1.overLayRect(
-      A1lib.mixColor(0, 255, 0),
-      chat.mainbox.rect.x, chat.mainbox.rect.y,
-      chat.mainbox.rect.width, chat.mainbox.rect.height,
-      2000, 5
-    );
-  } catch {}
-}
 
 function updateUI(key) {
   const order = RESPONSES[key].split(" > ");
@@ -228,15 +230,35 @@ function updateUI(key) {
   log(`🎯 UI set to: ${RESPONSES[key]}`);
 }
 
+function showSelected(chat) {
+  try {
+    alt1.overLayRect(
+      A1lib.mixColor(0,255,0),
+      chat.mainbox.rect.x, chat.mainbox.rect.y,
+      chat.mainbox.rect.width, chat.mainbox.rect.height,
+      2000, 5
+    );
+  } catch {}
+}
+
 let lastSig = "";
 let lastAt = 0;
 
+function triggerUpdate(key, sigSource) {
+  const now = Date.now();
+  const sig = key + "|" + sigSource;
+  if (sig !== lastSig || (now - lastAt) > 1500) {
+    lastSig = sig;
+    lastAt = now;
+    log(`✅ matched ${key}`);
+    updateUI(key);
+  }
+}
+
 function readChatbox() {
   let segs = [];
-  try { segs = reader.read() || []; } catch (e) {
-    log("⚠️ reader.read() failed; check Alt1 Pixel permission.");
-    return;
-  }
+  try { segs = reader.read() || []; }
+  catch (e) { log("⚠️ reader.read() failed; check Alt1 Pixel permission."); return; }
   if (!segs.length) return;
 
   const texts = segs.map(s => (s.text || "").trim()).filter(Boolean);
@@ -245,24 +267,12 @@ function readChatbox() {
   log("segs: " + JSON.stringify(texts.slice(-6)));
 
   const full = texts.join(" ").toLowerCase();
-
-  let key = null;
-  if (full.includes("weak")) key = "weak";
-  else if (full.includes("grovel")) key = "grovel";
-  else if (full.includes("pathetic")) key = "pathetic";
-
-  if (key) {
-    const now = Date.now();
-    const sig = key + "|" + full;
-    if (sig !== lastSig || (now - lastAt) > 1500) {
-      lastSig = sig;
-      lastAt = now;
-      log(`✅ matched ${key}`);
-      updateUI(key);
-    }
-  }
+  if (full.includes("weak"))      return triggerUpdate("weak", full);
+  if (full.includes("grovel"))    return triggerUpdate("grovel", full);
+  if (full.includes("pathetic"))  return triggerUpdate("pathetic", full);
 }
 
+// bind & loop
 setTimeout(() => {
   const h = setInterval(() => {
     try {
