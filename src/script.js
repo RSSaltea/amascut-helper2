@@ -188,9 +188,9 @@ function onAmascutLine(full, lineId) {
           log("↺ UI reset");
         }, 6000);
 
-      }, 5000);
+      }, 10000);
 
-    }, 10000);
+    }, 8000);
   } else {
     updateUI(key); // normal Grovel/Weak/Pathetic
   }
