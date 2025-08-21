@@ -327,7 +327,10 @@ function onAmascutLine(full, lineId) {
     countdownTimers.push(setTimeout(() => {
       if (SETTINGS.scarabs === "Barricade") {
         
-        const barricadeTime = (SETTINGS.role === "Base") ? 18 : 10;
+                      const barricadeTime = (SETTINGS.role === "Base" && SETTINGS.bend === "Immort") ? 8
+                     : (SETTINGS.role === "Base") ? 18
+                     : 10;
+
         startCountdown("Barricade", barricadeTime);
         countdownTimers.push(setTimeout(() => {
           resetUI();
