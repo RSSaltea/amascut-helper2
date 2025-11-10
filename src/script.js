@@ -1,7 +1,6 @@
 A1lib.identifyApp("appconfig.json");
 
 function log(msg) {
-  if (typeof SETTINGS !== "undefined" && !SETTINGS.logs) return;
   try {
     console.log(msg);
     const out = document.getElementById("output");
@@ -23,27 +22,102 @@ if (window.alt1) {
 const seenLineIds = new Set();
 const seenLineQueue = [];
 
-let countdownTimers = [];
 let resetTimerId = null;
+let lastDisplayAt = 0; // for 10s window used by generic showMessage/updateUI
+let activeIntervals = []; // holds intervals for special timers so we can cancel them
+let activeTimeouts = [];  // holds timeouts for special timers so we can cancel them
 
-function cancelCountdowns() {
-  if (startCountdown._interval) {
-    clearInterval(startCountdown._interval);
-    startCountdown._interval = null;
-  }
-  countdownTimers.forEach(clearTimeout);
-  countdownTimers = [];
+(function injectLogsToggle(){
+  const style = document.createElement("style");
+  style.textContent = `
+    .ah-logs-toggle{position:fixed;top:6px;right:8px;z-index:11000;font-size:12px;opacity:.85;background:#222;
+      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 8px;line-height:1;}
+    .ah-logs-toggle:hover{opacity:1}
+    .logs-hidden #output{display:none !important}
+  `;
+  document.head.appendChild(style);
+
+  const btn = document.createElement("button");
+  btn.className = "ah-logs-toggle";
+  btn.id = "ah-logs-toggle";
+  btn.textContent = "📝 Logs: On";
+  document.body.appendChild(btn);
+
+  const saved = localStorage.getItem("amascut.logsVisible");
+  const visible = saved === null ? true : saved === "true";
+  document.body.classList.toggle("logs-hidden", !visible);
+  btn.textContent = `📝 Logs: ${visible ? "On" : "Off"}`;
+
+  btn.addEventListener("click", () => {
+    const nowHidden = document.body.classList.toggle("logs-hidden");
+    const nowVisible = !nowHidden;
+    btn.textContent = `📝 Logs: ${nowVisible ? "On" : "Off"}`;
+    try { localStorage.setItem("amascut.logsVisible", String(nowVisible)); } catch {}
+  });
+})();
+
+/* ==== Added: tick configuration & toggle ==== */
+let tickMs = 600; // default 0.6s display tick
+
+(function injectTickToggle(){
+  const style = document.createElement("style");
+  style.textContent = `
+    .ah-tick-toggle{position:fixed;top:6px;left:8px;z-index:11000;font-size:12px;opacity:.85;background:#222;
+      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 8px;line-height:1;margin-right:6px;}
+    .ah-tick-toggle:hover{opacity:1}
+  `;
+  document.head.appendChild(style);
+
+  const btn = document.createElement("button");
+  btn.className = "ah-tick-toggle";
+  btn.id = "ah-tick-toggle";
+  const saved = Number(localStorage.getItem("amascut.tickMs"));
+  tickMs = (saved === 100 || saved === 600) ? saved : 600;
+  btn.textContent = `Tick/ms: ${tickMs}`;
+  document.body.appendChild(btn);
+
+  btn.addEventListener("click", () => {
+    tickMs = (tickMs === 600) ? 100 : 600;
+    btn.textContent = `Tick/ms: ${tickMs}`;
+    try { localStorage.setItem("amascut.tickMs", String(tickMs)); } catch {}
+
+    // rebuild running interval with new tick without resetting anchors
+    if (startSnuffedTimers._iv) {
+      try { clearInterval(startSnuffedTimers._iv); } catch {}
+      startSnuffedTimers._iv = makeSnuffedInterval();
+    }
+  });
+})();
+/* ============================================ */
+
+function clearActiveTimers() {
+  activeIntervals.forEach(clearInterval);
+  activeTimeouts.forEach(clearTimeout);
+  activeIntervals = [];
+  activeTimeouts = [];
 }
 
-function showSingleRow(text) {
+function autoResetIn10s() {
+  if (resetTimerId) clearTimeout(resetTimerId);
+  resetTimerId = setTimeout(() => {
+    resetUI();
+    log("↺ UI reset");
+  }, 10000);
+  lastDisplayAt = Date.now();
+}
+
+function resetUI() {
+  clearActiveTimers();
+  if (resetTimerId) { clearTimeout(resetTimerId); resetTimerId = null; }
+
   const rows = document.querySelectorAll("#spec tr");
 
   if (rows[0]) {
     const c0 = rows[0].querySelector("td");
-    if (c0) c0.textContent = text;
-    rows[0].style.display = "table-row";
-    rows[0].classList.remove("role-range", "role-magic", "role-melee");
-    rows[0].classList.add("selected", "callout", "flash");
+    if (c0) c0.textContent = "Waiting...";
+    rows[0].style.display = "";
+    rows[0].classList.remove("role-range", "role-magic", "role-melee", "callout", "flash");
+    rows[0].classList.add("selected");
   }
 
   for (let i = 1; i < rows.length; i++) {
@@ -52,34 +126,78 @@ function showSingleRow(text) {
     rows[i].style.display = "none";
     rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected", "callout", "flash");
   }
-
-  log(`✅ ${text}`);
 }
 
-function startCountdown(label, seconds) {
-  cancelCountdowns();
-  if (resetTimerId) { clearTimeout(resetTimerId); resetTimerId = null; }
+function showMessage(text) {
+  const rows = document.querySelectorAll("#spec tr");
+  if (!rows.length) return;
 
-  let remaining = seconds;
+  const withinWindow = Date.now() - lastDisplayAt <= 10000;
 
-  function render() {
-    if (remaining > 1) {
-      showSingleRow(`${label} (${remaining})`);
-    } else if (remaining === 1) {
-      showSingleRow(label.toUpperCase());
+  for (let i = 0; i < rows.length; i++) {
+    rows[i].classList.remove("role-range", "role-magic", "role-melee");
+    rows[i].classList.remove("callout", "flash");
+  }
+
+  if (!withinWindow) {
+    if (rows[0]) {
+      const c0 = rows[0].querySelector("td");
+      if (c0) c0.textContent = text;
+      rows[0].style.display = "table-row";
+      rows[0].classList.add("selected", "callout", "flash");
+    }
+    for (let i = 1; i < rows.length; i++) {
+      const c = rows[i].querySelector("td");
+      if (c) c.textContent = "";
+      rows[i].style.display = "none";
+      rows[i].classList.remove("selected");
+    }
+  } else {
+    if (rows[1]) {
+      const c1 = rows[1].querySelector("td");
+      if (c1) c1.textContent = text;
+      rows[1].style.display = "table-row";
+      rows[1].classList.add("selected", "callout", "flash");
+    } else {
+      const c0 = rows[0].querySelector("td");
+      if (c0) c0.textContent = text;
     }
   }
 
-  render();
-  startCountdown._interval = setInterval(() => {
-    remaining -= 1;
-    if (remaining >= 1) {
-      render();
-    } else {
-      clearInterval(startCountdown._interval);
-      startCountdown._interval = null;
-    }
-  }, 1000);
+  log(`✅ ${text}`);
+  autoResetIn10s();
+}
+
+const RESPONSES = {
+  weak:     "Range > Magic > Melee",
+  grovel:   "Magic > Melee > Range",
+  pathetic: "Melee > Range > Magic",
+};
+
+function updateUI(key) {
+  const order = RESPONSES[key].split(" > ");
+  const rows = document.querySelectorAll("#spec tr");
+
+  if (rows[0]) rows[0].style.display = "table-row";
+  if (rows[1]) rows[1].style.display = "table-row";
+  if (rows[2]) rows[2].style.display = "table-row";
+
+  rows.forEach((row, i) => {
+    const role = order[i] || "";
+    const cell = row.querySelector("td");
+    if (cell) cell.textContent = role;
+
+    row.classList.remove("callout", "flash");
+    row.classList.remove("role-range", "role-magic", "role-melee");
+    if (role === "Range") row.classList.add("role-range");
+    else if (role === "Magic") row.classList.add("role-magic");
+    else if (role === "Melee") row.classList.add("role-melee");
+
+    row.classList.toggle("selected", i === 0);
+  });
+
+  log(`✅ ${RESPONSES[key]}`);
+  autoResetIn10s();
 }
 
 const reader = new Chatbox.default();
@@ -104,65 +222,6 @@ reader.readargs = {
   backwards: true
 };
 
-const RESPONSES = {
-  weak:     "Range > Magic > Melee",
-  grovel:   "Magic > Melee > Range",
-  pathetic: "Melee > Range > Magic",
-};
-
-function updateUI(key) {
-  cancelCountdowns();
-
-  const order = RESPONSES[key].split(" > ");
-  const rows = document.querySelectorAll("#spec tr");
-
-  if (rows[0]) rows[0].style.display = "table-row";
-  if (rows[1]) rows[1].style.display = "table-row";
-  if (rows[2]) rows[2].style.display = "table-row";
-
-  rows.forEach((row, i) => {
-    const role = order[i] || "";
-    const cell = row.querySelector("td");
-    if (cell) cell.textContent = role;
-
-    row.classList.remove("callout", "flash");
-
-    row.classList.remove("role-range", "role-magic", "role-melee");
-    if (role === "Range") row.classList.add("role-range");
-    else if (role === "Magic") row.classList.add("role-magic");
-    else if (role === "Melee") row.classList.add("role-melee");
-
-    row.classList.toggle("selected", i === 0);
-  });
-
-  log(`✅ ${RESPONSES[key]}`);
-
-  if (resetTimerId) clearTimeout(resetTimerId);
-  resetTimerId = setTimeout(() => {
-    resetUI();
-    log("↺ UI reset");
-  }, 6000);
-}
-
-function resetUI() {
-  const rows = document.querySelectorAll("#spec tr");
-
-  if (rows[0]) {
-    const c0 = rows[0].querySelector("td");
-    if (c0) c0.textContent = "Waiting...";
-    rows[0].style.display = "";
-    rows[0].classList.remove("role-range", "role-magic", "role-melee", "callout", "flash");
-    rows[0].classList.add("selected");
-  }
-
-  for (let i = 1; i < rows.length; i++) {
-    const c = rows[i].querySelector("td");
-    if (c) c.textContent = "";
-    rows[i].style.display = "none";
-    rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected", "callout", "flash");
-  }
-}
-
 function firstNonWhiteColor(seg) {
   if (!seg.fragments) return null;
   for (const f of seg.fragments) {
@@ -171,113 +230,126 @@ function firstNonWhiteColor(seg) {
   return null;
 }
 
-const SETTINGS_DEFAULT = {
-  role: "Base",         
-  bend: "Voke",         
-  scarabs: "Barricade", 
-  logs: false           
-};
-
-
-function loadSettings() {
-  try {
-    const s = JSON.parse(localStorage.getItem("amascut.settings") || "null");
-    return Object.assign({}, SETTINGS_DEFAULT, s || {});
-  } catch {
-    return { ...SETTINGS_DEFAULT };
-  }
+/* Helpers to ensure rows are visible and to print on fixed rows */
+function setRow(i, text) {
+  const rows = document.querySelectorAll("#spec tr");
+  if (!rows[i]) return;
+  const cell = rows[i].querySelector("td");
+  if (cell) cell.textContent = text;
+  rows[i].style.display = "table-row";
+  rows[i].classList.add("selected", "callout", "flash");
+}
+function clearRow(i) {
+  const rows = document.querySelectorAll("#spec tr");
+  if (!rows[i]) return;
+  const cell = rows[i].querySelector("td");
+  if (cell) cell.textContent = "";
+  rows[i].style.display = "none";
+  rows[i].classList.remove("selected", "callout", "flash", "role-range", "role-magic", "role-melee");
 }
 
-function saveSettings(s) {
-  try { localStorage.setItem("amascut.settings", JSON.stringify(s)); } catch {}
+/* format with one decimal (e.g., 14.4 → 14.4, 0.05 → 0.0) */
+function fmt(x) { return Math.max(0, x).toFixed(1); }
+
+let snuffStartAt = 0;
+
+/* ==== Added: shared interval builder for snuffed timers ==== */
+function makeSnuffedInterval() {
+  const iv = setInterval(() => {
+    const elapsed = (Date.now() - snuffStartAt) / 1000;
+
+    // --- Swap (14.4s one-shot) ---
+    const swapRemaining = 14.4 - elapsed;
+    if (swapRemaining <= 0) {
+      if (!startSnuffedTimers._swapFrozen) {
+        setRow(0, "Swap side: 0.0s");
+        startSnuffedTimers._swapFrozen = true; // no further updates
+        clearRow(0); // remove immediately at 0.0
+      }
+    } else if (!startSnuffedTimers._swapFrozen) {
+      setRow(0, `Swap side: ${fmt(swapRemaining)}s`);
+    }
+
+    // --- Click-in (9.0s repeating) ---
+    const period = 9.0;
+    let clickRemaining = period - (elapsed % period);
+    if (clickRemaining >= period - 1e-6) clickRemaining = 0;
+    setRow(1, `Click in: ${fmt(clickRemaining)}s`);
+  }, tickMs);
+
+  activeIntervals.push(iv);
+  return iv;
+}
+/* ========================================================== */
+
+function startSnuffedTimers() {
+  clearActiveTimers();
+  if (resetTimerId) { clearTimeout(resetTimerId); resetTimerId = null; }
+
+  startSnuffedTimers._swapHideScheduled = false;
+  startSnuffedTimers._swapFrozen = false;
+
+  snuffStartAt = Date.now();
+
+  setRow(0, "Swap side: 14.4s");
+  setRow(1, "Click in: 9.0s");
+
+  if (startSnuffedTimers._iv) { try { clearInterval(startSnuffedTimers._iv); } catch {} }
+  startSnuffedTimers._iv = makeSnuffedInterval();
 }
 
-let SETTINGS = loadSettings();
-
-(function injectSettingsUI(){
-  const style = document.createElement("style");
-  style.textContent = `
-    .ah-cog{position:fixed;top:6px;right:8px;z-index:11000;font-size:16px;opacity:.8;background:#222;
-      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 6px;line-height:1;}
-    .ah-cog:hover{opacity:1}
-    .ah-panel{position:fixed;top:30px;right:8px;z-index:11000;background:#1b1b1b;border:1px solid #444;
-      border-radius:6px;padding:8px 10px;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.5);display:none}
-    .ah-row{display:flex;align-items:center;gap:8px;margin:6px 0}
-    .ah-row label{min-width:95px;font-size:12px;opacity:.9}
-    .ah-panel select{flex:1;background:#111;color:#fff;border:1px solid #555;border-radius:4px;padding:3px}
-    .ah-tip{border-bottom:1px dotted #aaa;cursor:help}
-  `;
-  document.head.appendChild(style);
-
-  const cog = document.createElement("button");
-  cog.className = "ah-cog";
-  cog.title = "Settings";
-  cog.textContent = "⚙️";
-  document.body.appendChild(cog);
-
-  const panel = document.createElement("div");
-  panel.className = "ah-panel";
-panel.innerHTML = `
-  <div class="ah-row">
-    <label>Role</label>
-    <select id="ah-role">
-      <option value="DPS">DPS</option>
-      <option value="Base">Base</option>
-    </select>
-  </div>
-  <div class="ah-row">
-    <label><span class="ah-tip" title="How do you plan to deal with Bend the knee mechanic?">Bend the knee</span></label>
-    <select id="ah-bend">
-      <option value="Voke">Voke</option>
-      <option value="Immort">Immort</option>
-    </select>
-  </div>
-  <div class="ah-row">
-    <label><span class="ah-tip" title="How do you plan to deal with Scarabs?">Scarabs</span></label>
-    <select id="ah-scarabs">
-      <option value="Barricade">Barricade</option>
-      <option value="Dive">Dive</option>
-    </select>
-  </div>
-  <div class="ah-row">
-    <label>Logs</label>
-    <input type="checkbox" id="ah-logs">
-  </div>
-`;
-  document.body.appendChild(panel);
-
-panel.querySelector("#ah-role").value = SETTINGS.role;
-panel.querySelector("#ah-bend").value = SETTINGS.bend;
-panel.querySelector("#ah-scarabs").value = SETTINGS.scarabs;
-panel.querySelector("#ah-logs").checked = SETTINGS.logs;
-
-  cog.addEventListener("click", () => {
-    panel.style.display = panel.style.display === "none" ? "block" : "none";
-  });
-function updateFromUI(){
-  SETTINGS.role = panel.querySelector("#ah-role").value;
-  SETTINGS.bend = panel.querySelector("#ah-bend").value;
-  SETTINGS.scarabs = panel.querySelector("#ah-scarabs").value;
-  SETTINGS.logs = panel.querySelector("#ah-logs").checked;
-  saveSettings(SETTINGS);
-
-  if (!SETTINGS.logs) {
-    const out = document.getElementById("output");
-    if (out) out.innerHTML = "";
+function stopSnuffedTimersAndReset() {
+  clearActiveTimers();
+  if (resetTimerId) {
+    clearTimeout(resetTimerId);
+    resetTimerId = null;
   }
 
-  log(`⚙️ Settings → role=${SETTINGS.role}, bend=${SETTINGS.bend}, scarabs=${SETTINGS.scarabs}, logs=${SETTINGS.logs}`);
+  startSnuffedTimers._swapHideScheduled = false;
+  startSnuffedTimers._swapFrozen = false;
+
+  lastDisplayAt = 0;
+  [0, 1, 2].forEach(clearRow);
+  resetUI();
 }
 
-  panel.addEventListener("change", updateFromUI);
-})();
 
 let lastSig = "";
 let lastAt = 0;
 
 function onAmascutLine(full, lineId) {
-  if (lineId && seenLineIds.has(lineId)) return;
-  if (lineId) {
+  // (remove the early seenLineIds block here)
+
+  // Hard reset on session message
+  if (/welcome to your session/i.test(full)) {
+    log("🔄 Session welcome detected — full reset");
+    stopSnuffedTimersAndReset();
+    return;
+  }
+
+  const raw = full;
+  const low = full.toLowerCase();
+
+  let key = null;
+  if (low.includes("your soul is weak")) key = "soloWeakMagic";
+  else if (low.includes("all strength withers")) key = "soloMelee";
+  else if (low.includes("i will not suffer this")) key = "soloRange";
+  else if (low.includes("your light will be snuffed out")) key = "snuffed";
+  else if (low.includes("a new dawn")) key = "newdawn";
+  else if (raw.includes("Grovel")) key = "grovel";
+  else if (/\bWeak\b/.test(raw)) key = "weak";
+  else if (raw.includes("Pathetic")) key = "pathetic";
+  else if (low.includes("tear them apart")) key = "tear";
+  else if (low.includes("bend the knee")) key = "bend";
+  else if (raw.includes("Crondis... It should have never come to this")) key = "crondis";
+  else if (raw.includes("I'm sorry, Apmeken")) key = "apmeken";
+  else if (raw.includes("Forgive me, Het")) key = "het";
+  else if (raw.includes("Scabaras...")) key = "scabaras";
+  if (!key) return;
+
+  // Only dedupe with seenLineIds for NON-snuffed lines
+  if (key !== "snuffed" && lineId) {
+    if (seenLineIds.has(lineId)) return;
     seenLineIds.add(lineId);
     seenLineQueue.push(lineId);
     if (seenLineQueue.length > 120) {
@@ -286,121 +358,51 @@ function onAmascutLine(full, lineId) {
     }
   }
 
-  const raw = full;               
-  const low = full.toLowerCase(); 
-
-  let key = null;
-  if (raw.includes("Grovel")) key = "grovel";
-  else if (/\bWeak\b/.test(raw)) key = "weak";
-  else if (raw.includes("Pathetic")) key = "pathetic";
-  else if (low.includes("tear them apart")) key = "tear";
-  else if (low.includes("tumeken's heart delivered")) key = "barricadeHeart";
-  else if (raw.includes("I WILL NOT BE SUBJUGATED")) key = "notSubjugated";
-  else if (raw.includes("Crondis... It should have never come to this")) key = "crondis";
-  else if (raw.includes("I'm sorry, Apmeken")) key = "apmeken";
-  else if (raw.includes("Forgive me, Het")) key = "het";
-  else if (raw.includes("Scabaras...")) key = "scabaras";
-
-  if (!key) return;
-
   const now = Date.now();
+    if (key !== "snuffed") {
   const sig = key + "|" + raw.slice(-80);
-  if (sig === lastSig && now - lastAt < 1200) return;
+    if (sig === lastSig && now - lastAt < 1200) return;
   lastSig = sig;
   lastAt = now;
-
-  if (key === "tear") {
-    let first = "none"; 
-    if (SETTINGS.role === "DPS" && SETTINGS.bend === "Voke") first = "voke";
-    else if (SETTINGS.role === "Base" && SETTINGS.bend === "Immort") first = "immort";
-
-    const firstDuration = (first === "voke" || first === "immort") ? 8 : 0;
-
-    if (first === "voke") {
-      startCountdown("Voke → Reflect", 8);
-    } else if (first === "immort") {
-      startCountdown("Immortality", 8);
-    } 
-
-    const scarabDelayMs = (firstDuration ? (firstDuration + 2) : 2) * 1000;
-
-    countdownTimers.push(setTimeout(() => {
-      if (SETTINGS.scarabs === "Barricade") {
-        
-                      const barricadeTime = (SETTINGS.role === "Base" && SETTINGS.bend === "Immort") ? 8
-                     : (SETTINGS.role === "Base") ? 18
-                     : 10;
-
-        startCountdown("Barricade", barricadeTime);
-        countdownTimers.push(setTimeout(() => {
-          resetUI();
-          log("↺ UI reset");
-        }, barricadeTime * 1000));
-      } else {
-
-        showSingleRow("Dive");
-        countdownTimers.push(setTimeout(() => {
-          resetUI();
-          log("↺ UI reset");
-        }, 8000));
-      }
-    }, scarabDelayMs));
-
-  } else if (key === "barricadeHeart") {
-
-    startCountdown("Barricade", 12);
-    countdownTimers.push(setTimeout(() => {
-      resetUI();
-      log("↺ UI reset");
-    }, 12000));
-
-  } else if (key === "notSubjugated") {
-
-    showSingleRow("Magic Prayer → Devo → Reflect → Melee Prayer");
-    setTimeout(() => {
-      resetUI();
-      log("↺ UI reset");
-    }, 8000);
-
-  } else if (key === "crondis") {
-    showSingleRow("Crondis (SE)");
-    setTimeout(() => {
-      resetUI();
-      log("↺ UI reset");
-    }, 6000);
-
-  } else if (key === "apmeken") {
-    showSingleRow("Apmeken (NW)");
-    setTimeout(() => {
-      resetUI();
-      log("↺ UI reset");
-    }, 6000);
-
-  } else if (key === "het") {
-    showSingleRow("Het (SW)");
-    setTimeout(() => {
-      resetUI();
-      log("↺ UI reset");
-    }, 6000);
-
-  } else if (key === "scabaras") {
-    showSingleRow("Scabaras (NE)");
-    setTimeout(() => {
-      resetUI();
-      log("↺ UI reset");
-    }, 6000);
-
-  } else {
-
-    if (SETTINGS.role === "Base") {
-      cancelCountdowns();
-      updateUI(key);
-    } else {
-      log(`(DPS mode) Ignored ${key}`);
-    }
-  }
 }
 
+
+  if (key === "snuffed") {
+    log("⚡ Snuffed out detected — resetting timers");
+    startSnuffedTimers();
+    return;
+  }
+  if (key === "newdawn") {
+    log("🌅 A new dawn — resetting timers");
+    stopSnuffedTimersAndReset();
+    snuffStartAt = 0;
+    return;
+  }
+
+
+  if (key === "tear") {
+    showMessage("Scarabs + Bend the knee shortly");
+  } else if (key === "bend") {
+    showMessage("Bend the Knee");
+  } else if (key === "crondis") {
+    showMessage("Crondis (SE)");
+  } else if (key === "apmeken") {
+    showMessage("Apmeken (NW)");
+  } else if (key === "het") {
+    showMessage("Het (SW)");
+  } else if (key === "scabaras") {
+    showMessage("Scabaras (NE)");
+  } else if (key === "soloWeakMagic") {
+    showMessage("Magic");
+  } else if (key === "soloMelee") {
+    showMessage("Melee");
+  } else if (key === "soloRange") {
+    showMessage("Range");
+  } else {
+    // weak / grovel / pathetic — same behavior
+    updateUI(key);
+  }
+}
 
 function readChatbox() {
   let segs = [];
@@ -421,7 +423,7 @@ function readChatbox() {
 
     for (let j = i + 1; j < segs.length; j++) {
       const s2 = segs[j];
-      if (!s2.fragments || s2.fragments.length === 0) break;
+      if (!s2.fragments || !s2.fragments.length) break;
       const col = firstNonWhiteColor(s2);
       if (col && isColorNear(col, TEXT_RGB)) {
         full += " " + s2.text.trim();
