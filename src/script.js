@@ -309,11 +309,12 @@ function stopSnuffedTimersAndReset() {
   startSnuffedTimers._swapHideScheduled = false;
   startSnuffedTimers._swapFrozen = false;
 
+  snuffStartAt = 0;
+
   lastDisplayAt = 0;
   [0, 1, 2].forEach(clearRow);
   resetUI();
 }
-
 
 let lastSig = "";
 let lastAt = 0;
@@ -397,10 +398,15 @@ function onAmascutLine(full, lineId) {
 
 
   if (key === "snuffed") {
-    log("⚡ Snuffed out detected — resetting timers");
-    startSnuffedTimers();
+  if (snuffStartAt) {
+    log("⚡ Snuffed out already active — ignoring duplicate");
     return;
   }
+  log("⚡ Snuffed out detected — starting timers");
+  startSnuffedTimers();
+  return;
+}
+
   if (key === "newdawn") {
     log("🌅 A new dawn — resetting timers");
     stopSnuffedTimersAndReset();
