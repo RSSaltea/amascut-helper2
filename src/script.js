@@ -196,8 +196,6 @@ function updateUI(key) {
     row.classList.toggle("selected", i === 0);
   });
 
-  overlayForResponseKey(key);
-
   log(`✅ ${RESPONSES[key]}`);
   autoResetIn10s();
 }
@@ -233,51 +231,6 @@ function firstNonWhiteColor(seg) {
 }
 
 /* Helpers to ensure rows are visible and to print on fixed rows */
-function overlayOrder(order, ms = 4000) {
-  try {
-    // Try to get RS game area size if available, fall back to window size
-    const w = (alt1 && (alt1.rsWidth || alt1.rswidth)) || window.innerWidth || 800;
-    const h = (alt1 && (alt1.rsHeight || alt1.rsheight)) || window.innerHeight || 600;
-
-    // Visuals
-    const lineH = 32;         // vertical spacing per line
-    const fontPx = 28;        // font size for overlayText
-    const duration = ms;      // visible time in ms
-
-    // Map role -> overlay color
-    const roleColor = (role) => {
-      if (/Range/i.test(role)) return A1lib.mixColor( 80, 205,  80); // green
-      if (/Magic/i.test(role)) return A1lib.mixColor( 80, 140, 255); // blue
-      if (/Melee/i.test(role)) return A1lib.mixColor(225,  80,  80); // red
-      return A1lib.mixColor(255, 255, 255); // fallback white
-    };
-
-    // Center Y so that 3 lines are vertically centered (works for 1–3 lines)
-    const n = Math.min(3, order.length);
-    const totalHeight = (n - 1) * lineH;
-    const startY = Math.floor(h / 2 - totalHeight / 2);
-    const centerX = Math.floor(w / 2);
-
-    // Draw each line centered: Top → second → third
-    order.slice(0, 3).forEach((role, i) => {
-      const y = startY + i * lineH;
-      // Shadow/background pass for contrast
-      try { alt1.overLayText(role, A1lib.mixColor(0, 0, 0), centerX + 1, y + 1, duration, fontPx); } catch {}
-      // Colored main text
-      alt1.overLayText(role, roleColor(role), centerX, y, duration, fontPx);
-    });
-  } catch (e) {
-    // If overlay not available, silently ignore (Alt1 not present or no permissions)
-    log("ℹ️ overlayOrder skipped (Alt1 overlay unavailable)");
-  }
-}
-
-/** Convenience: show all three lines for a response key using RESPONSES */
-function overlayForResponseKey(key) {
-  const order = (RESPONSES[key] || "").split(" > ").filter(Boolean);
-  if (order.length) overlayOrder(order, 4000);
-}
-
 function setRow(i, text) {
   const rows = document.querySelectorAll("#spec tr");
   if (!rows[i]) return;
