@@ -174,6 +174,38 @@ const RESPONSES = {
   pathetic: "Melee > Range > Magic",
 };
 
+/* ===== Centered alert overlay for Weak/Grovel/Pathetic ===== */
+function getRsCenter() {
+  // Prefer RS client area, fallback to entire screen union
+  const x = (alt1.rsLinked ? alt1.rsX : alt1.screenX) | 0;
+  const y = (alt1.rsLinked ? alt1.rsY : alt1.screenY) | 0;
+  const w = (alt1.rsLinked ? alt1.rsWidth : alt1.screenWidth) | 0;
+  const h = (alt1.rsLinked ? alt1.rsHeight : alt1.screenHeight) | 0;
+  return { cx: (x + (w >> 1)) | 0, cy: (y + (h >> 1)) | 0 };
+}
+
+function drawCenterAlert(text, ms = 2200, size = 64) {
+  if (!window.alt1 || !alt1.permissionOverlay) return;
+
+  // Use a group so we can clear previous alert frames
+  const GROUP = "amascut-spec-alert";
+  try { alt1.overLayClearGroup(GROUP); } catch {}
+  try { alt1.overLaySetGroup(GROUP); } catch {}
+
+  const { cx, cy } = getRsCenter();
+
+  // Colors
+  const black = A1lib.mixColor(0, 0, 0, 255);
+  const white = A1lib.mixColor(255, 255, 255, 255);
+
+  // Simple shadow for readability (drawn first, slightly offset)
+  alt1.overLayText(text, black, size, cx + 2, cy + 2, ms);
+  alt1.overLayText(text, white, size, cx, cy, ms);
+
+  // Optional: auto-clear group after it expires (safety)
+  setTimeout(() => { try { alt1.overLayClearGroup(GROUP); } catch {} }, ms + 50);
+}
+
 function updateUI(key) {
   const order = RESPONSES[key].split(" > ");
   const rows = document.querySelectorAll("#spec tr");
@@ -198,6 +230,11 @@ function updateUI(key) {
 
   log(`✅ ${RESPONSES[key]}`);
   autoResetIn10s();
+
+    if (key === "weak" || key === "grovel" || key === "pathetic") {
+    // Show just the top priority on the big overlay for clarity
+    const top = order[0]; // e.g., "Range" for Weak
+    drawCenterAlert(RESPONSES[key]);
 }
 
 const reader = new Chatbox.default();
