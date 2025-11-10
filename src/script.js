@@ -174,42 +174,6 @@ const RESPONSES = {
   pathetic: "Melee > Range > Magic",
 };
 
-// Pick a color by role for the overlay (matches your row colors)
-const ROLE_COLOR = {
-  "Range": A1lib.mixColor( 80, 200,  80),  // green
-  "Magic": A1lib.mixColor( 90, 140, 255),  // blue
-  "Melee": A1lib.mixColor(220,  70,  70),  // red
-};
-
-// Best-effort center overlay on the RS client
-function overlayCenterText(text, ms, color) {
-  try {
-    // Try to use RS client size if available; otherwise fall back to a sane default
-    const w = (alt1?.rsWidth)  || 800;
-    const h = (alt1?.rsHeight) || 600;
-
-    // crude text width estimate (9 px/char @ ~28–30px font); good enough to center
-    const estWidth = Math.max(1, text.length) * 9;
-    const x = Math.max(2, Math.floor(w / 2 - estWidth));
-    const y = Math.max(2, Math.floor(h * 0.35)); // slightly above true center
-
-    // Big readable font; duration in ms
-    alt1.overLayTextEx(color, "bold 30px Arial", x, y, ms, text);
-  } catch (e) {
-    // Overlay failed (e.g., Alt1 not present) — just ignore
-  }
-}
-
-// Show role order in the middle for Weak/Grovel/Pathetic
-function overlayOrderForKey(key) {
-  const resp = RESPONSES[key];
-  if (!resp) return;
-  const order = resp.split(" > ");
-  // Color by the *first* (strongest) role in the order
-  const color = ROLE_COLOR[order[0]] || A1lib.mixColor(255, 255, 255);
-  overlayCenterText(order.join("  >  "), 3500, color);
-}
-
 function updateUI(key) {
   const order = RESPONSES[key].split(" > ");
   const rows = document.querySelectorAll("#spec tr");
@@ -234,8 +198,6 @@ function updateUI(key) {
 
   log(`✅ ${RESPONSES[key]}`);
   autoResetIn10s();
-
-  overlayOrderForKey(key);
 }
 
 const reader = new Chatbox.default();
