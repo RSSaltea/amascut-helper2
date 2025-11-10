@@ -373,7 +373,7 @@ function onAmascutLine(full, lineId) {
   else if (raw.includes("Crondis... It should have never come to this")) key = "crondis";
   else if (raw.includes("I'm sorry, Apmeken")) key = "apmeken";
   else if (raw.includes("Forgive me, Het")) key = "het";
-  else if (raw.includes("Scabaras...")) key = "scabaras";
+  else if (/Scabaras\.\.\.(?!\s*Het\.\.\.\s*Bear witness!?)/i.test(raw)) key = "scabaras";
   if (!key) return;
 
   // Only dedupe with seenLineIds for NON-snuffed lines
