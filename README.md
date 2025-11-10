@@ -1,2 +1,2 @@
-# amascut-helper2
+# amascut-helper-test
 Helps with mechanics of Amascut.
