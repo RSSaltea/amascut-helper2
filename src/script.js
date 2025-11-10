@@ -264,7 +264,8 @@ function makeSnuffedInterval() {
       if (!startSnuffedTimers._swapFrozen) {
         setRow(0, "Swap side: 0.0s");
         startSnuffedTimers._swapFrozen = true; // no further updates
-        clearRow(0); // remove immediately at 0.0
+        const t = setTimeout(() => { clearRow(0); }, 5000); // stay visible 5s, then remove
+        activeTimeouts.push(t);
       }
     } else if (!startSnuffedTimers._swapFrozen) {
       setRow(0, `Swap side: ${fmt(swapRemaining)}s`);
@@ -316,6 +317,34 @@ function stopSnuffedTimersAndReset() {
 
 let lastSig = "";
 let lastAt = 0;
+
+/* ==== Added: colored, auto-clearing solo messages ==== */
+function showSolo(role, cls) {
+  const rows = document.querySelectorAll("#spec tr");
+  if (!rows.length) return;
+
+  // clear all rows
+  for (let i = 0; i < rows.length; i++) {
+    rows[i].classList.remove("role-range","role-magic","role-melee","callout","flash","selected");
+    const c = rows[i].querySelector("td");
+    if (c) c.textContent = "";
+    rows[i].style.display = "none";
+  }
+
+  // show on row 0 with color
+  const row = rows[0];
+  if (row) {
+    const cell = row.querySelector("td");
+    if (cell) cell.textContent = role;
+    row.style.display = "table-row";
+    row.classList.add("selected","callout","flash",cls);
+  }
+
+  // remove after 4 seconds
+  const t = setTimeout(() => { clearRow(0); }, 4000);
+  activeTimeouts.push(t);
+}
+/* ======================================================= */
 
 function onAmascutLine(full, lineId) {
   // (remove the early seenLineIds block here)
@@ -393,11 +422,11 @@ function onAmascutLine(full, lineId) {
   } else if (key === "scabaras") {
     showMessage("Scabaras (NE)");
   } else if (key === "soloWeakMagic") {
-    showMessage("Magic");
+    showSolo("Magic", "role-magic");   // blue
   } else if (key === "soloMelee") {
-    showMessage("Melee");
+    showSolo("Melee", "role-melee");   // red
   } else if (key === "soloRange") {
-    showMessage("Range");
+    showSolo("Range", "role-range");   // green
   } else {
     // weak / grovel / pathetic — same behavior
     updateUI(key);
