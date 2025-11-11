@@ -90,6 +90,99 @@ let tickMs = 600; // default 0.6s display tick
 })();
 /* ============================================ */
 
+/* ===================== CENTER OVERLAY (drop-in) ===================== */
+/* Minimal, additive overlay that mirrors your table UI in screen center */
+
+const OVERLAY_GROUP = "amascut.center";
+let overlayEnabled = true;
+
+// simple UI toggle (left side, under Tick toggle)
+(function injectOverlayToggle(){
+  const style = document.createElement("style");
+  style.textContent = `
+    .ah-overlay-toggle{position:fixed;top:6px;left:98px;z-index:11000;font-size:12px;opacity:.85;background:#222;
+      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 8px;line-height:1;margin-right:6px;}
+    .ah-overlay-toggle:hover{opacity:1}
+  `;
+  document.head.appendChild(style);
+
+  const btn = document.createElement("button");
+  btn.className = "ah-overlay-toggle";
+  btn.id = "ah-overlay-toggle";
+  const saved = localStorage.getItem("amascut.centerOverlay");
+  overlayEnabled = saved === null ? true : saved === "true";
+  btn.textContent = `Center overlay: ${overlayEnabled ? "On" : "Off"}`;
+  document.body.appendChild(btn);
+
+  btn.addEventListener("click", () => {
+    overlayEnabled = !overlayEnabled;
+    btn.textContent = `Center overlay: ${overlayEnabled ? "On" : "Off"}`;
+    try { localStorage.setItem("amascut.centerOverlay", String(overlayEnabled)); } catch {}
+    if (!overlayEnabled) clearCenterOverlay();
+  });
+})();
+
+function clearCenterOverlay(){
+  if (!window.alt1) return;
+  try { alt1.overLayClearGroup(OVERLAY_GROUP); } catch {}
+}
+
+// colors to match your CSS classes
+const COLOR_WHITE = () => A1lib.mixColor(255,255,255);
+const COLOR_RANGE = () => A1lib.mixColor( 90,200, 90);   // greenish
+const COLOR_MAGIC = () => A1lib.mixColor( 90,150,255);   // blue
+const COLOR_MELEE = () => A1lib.mixColor(230, 80, 80);   // red
+
+function roleColor(role){
+  if (role === "Range") return COLOR_RANGE();
+  if (role === "Magic") return COLOR_MAGIC();
+  if (role === "Melee") return COLOR_MELEE();
+  return COLOR_WHITE();
+}
+
+// center helper: draw one or multiple lines, each with its own color (optional)
+function drawCenterLines(lines, {size=34, time=null, colors=[]} = {}){
+  if (!window.alt1 || !overlayEnabled || !alt1.permissionOverlay) return; // requires Overlay permission
+  if (!alt1.rsLinked) return; // only draw when RS is linked
+
+  const cx = alt1.rsX + Math.floor(alt1.rsWidth / 2);
+  const cy = alt1.rsY + Math.floor(alt1.rsHeight / 2);
+
+  // lifetime: keep text alive a tad longer than our update cadence
+  const lifetime = time ?? Math.max(800, tickMs + 100);
+  const lineGap = size + 8;
+
+  try { alt1.overLaySetGroup(OVERLAY_GROUP); } catch {}
+
+  lines.forEach((txt, i) => {
+    const c = colors[i] ?? COLOR_WHITE();
+    // crude width estimate for centering: size * 0.6 per character
+    const est = Math.floor((txt?.length ?? 0) * size * 0.6);
+    const x = cx - Math.floor(est / 2);
+    const y = cy + Math.floor((i - (lines.length - 1) / 2) * lineGap);
+    try { alt1.overLayText(txt, c, size, x, y, lifetime); } catch {}
+  });
+
+  try { alt1.overLaySetGroup(""); } catch {}
+}
+
+// HIGH-LEVEL: these mirror your UI functions so we don’t touch their internals
+function overlay_showOrder(orderArr){
+  // show three lines: Top (selected), then the next two
+  const colors = orderArr.map(roleColor);
+  drawCenterLines(orderArr, { size: 36, colors });
+}
+function overlay_showSolo(role){
+  drawCenterLines([role], { size: 44, colors:[roleColor(role)] });
+}
+function overlay_showMessage(msg){
+  drawCenterLines([msg], { size: 36, colors:[COLOR_WHITE()] });
+}
+function overlay_showTimers({swapStr, clickStr}){
+  drawCenterLines([swapStr, clickStr], { size: 34, colors:[COLOR_WHITE(), COLOR_WHITE()] });
+}
+/* ==================================================================== */
+
 function clearActiveTimers() {
   activeIntervals.forEach(clearInterval);
   activeTimeouts.forEach(clearTimeout);
@@ -126,6 +219,9 @@ function resetUI() {
     rows[i].style.display = "none";
     rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected", "callout", "flash");
   }
+
+  /* added: also clear the center overlay on reset */
+  clearCenterOverlay();
 }
 
 function showMessage(text) {
@@ -166,6 +262,9 @@ function showMessage(text) {
 
   log(`✅ ${text}`);
   autoResetIn10s();
+
+  /* added: mirror message to center overlay */
+  overlay_showMessage(text);
 }
 
 const RESPONSES = {
@@ -198,6 +297,9 @@ function updateUI(key) {
 
   log(`✅ ${RESPONSES[key]}`);
   autoResetIn10s();
+
+  /* added: mirror W/G/P order to center overlay */
+  overlay_showOrder(order);
 }
 
 const reader = new Chatbox.default();
@@ -276,6 +378,11 @@ function makeSnuffedInterval() {
     let clickRemaining = period - (elapsed % period);
     if (clickRemaining >= period - 1e-6) clickRemaining = 0;
     setRow(1, `Click in: ${fmt(clickRemaining)}s`);
+
+    /* added: mirror timers to center overlay */
+    const swapStr = `Swap side: ${fmt(Math.max(0, swapRemaining))}s`;
+    const clickStr = `Click in: ${fmt(clickRemaining)}s`;
+    overlay_showTimers({ swapStr, clickStr });
   }, tickMs);
 
   activeIntervals.push(iv);
@@ -314,6 +421,9 @@ function stopSnuffedTimersAndReset() {
   lastDisplayAt = 0;
   [0, 1, 2].forEach(clearRow);
   resetUI();
+
+  /* added: ensure overlay is cleared when timers stop */
+  clearCenterOverlay();
 }
 
 let lastSig = "";
@@ -344,6 +454,9 @@ function showSolo(role, cls) {
   // remove after 4 seconds
   const t = setTimeout(() => { clearRow(0); }, 4000);
   activeTimeouts.push(t);
+
+  /* added: mirror SOLO to center overlay */
+  overlay_showSolo(role);
 }
 /* ======================================================= */
 
@@ -411,6 +524,8 @@ function onAmascutLine(full, lineId) {
     log("🌅 A new dawn — resetting timers");
     stopSnuffedTimersAndReset();
     snuffStartAt = 0;
+    /* added: also clear overlay on 'new dawn' */
+    clearCenterOverlay();
     return;
   }
 
