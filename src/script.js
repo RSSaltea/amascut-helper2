@@ -90,98 +90,40 @@ let tickMs = 600; // default 0.6s display tick
 })();
 /* ============================================ */
 
-/* ===================== CENTER OVERLAY (drop-in) ===================== */
-/* Minimal, additive overlay that mirrors your table UI in screen center */
+/* =============== ADDED: super-simple CENTER TEXT overlay =============== */
+/* No toggles, no colors—just plain text centered on the RS window.      */
+const OVERLAY_GROUP = "amascut.center.text";
 
-const OVERLAY_GROUP = "amascut.center";
-let overlayEnabled = true;
-
-// simple UI toggle (left side, under Tick toggle)
-(function injectOverlayToggle(){
-  const style = document.createElement("style");
-  style.textContent = `
-    .ah-overlay-toggle{position:fixed;top:6px;left:98px;z-index:11000;font-size:12px;opacity:.85;background:#222;
-      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 8px;line-height:1;margin-right:6px;}
-    .ah-overlay-toggle:hover{opacity:1}
-  `;
-  document.head.appendChild(style);
-
-  const btn = document.createElement("button");
-  btn.className = "ah-overlay-toggle";
-  btn.id = "ah-overlay-toggle";
-  const saved = localStorage.getItem("amascut.centerOverlay");
-  overlayEnabled = saved === null ? true : saved === "true";
-  btn.textContent = `Center overlay: ${overlayEnabled ? "On" : "Off"}`;
-  document.body.appendChild(btn);
-
-  btn.addEventListener("click", () => {
-    overlayEnabled = !overlayEnabled;
-    btn.textContent = `Center overlay: ${overlayEnabled ? "On" : "Off"}`;
-    try { localStorage.setItem("amascut.centerOverlay", String(overlayEnabled)); } catch {}
-    if (!overlayEnabled) clearCenterOverlay();
-  });
-})();
-
-function clearCenterOverlay(){
+function centerOverlayClear(){
   if (!window.alt1) return;
   try { alt1.overLayClearGroup(OVERLAY_GROUP); } catch {}
 }
 
-// colors to match your CSS classes
-const COLOR_WHITE = () => A1lib.mixColor(255,255,255);
-const COLOR_RANGE = () => A1lib.mixColor( 90,200, 90);   // greenish
-const COLOR_MAGIC = () => A1lib.mixColor( 90,150,255);   // blue
-const COLOR_MELEE = () => A1lib.mixColor(230, 80, 80);   // red
-
-function roleColor(role){
-  if (role === "Range") return COLOR_RANGE();
-  if (role === "Magic") return COLOR_MAGIC();
-  if (role === "Melee") return COLOR_MELEE();
-  return COLOR_WHITE();
-}
-
-// center helper: draw one or multiple lines, each with its own color (optional)
-function drawCenterLines(lines, {size=34, time=null, colors=[]} = {}){
-  if (!window.alt1 || !overlayEnabled || !alt1.permissionOverlay) return; // requires Overlay permission
-  if (!alt1.rsLinked) return; // only draw when RS is linked
+function centerOverlayLines(lines, size = 36, lifetime = Math.max(800, tickMs + 100)) {
+  if (!window.alt1 || !alt1.permissionOverlay || !alt1.rsLinked) return;
 
   const cx = alt1.rsX + Math.floor(alt1.rsWidth / 2);
   const cy = alt1.rsY + Math.floor(alt1.rsHeight / 2);
-
-  // lifetime: keep text alive a tad longer than our update cadence
-  const lifetime = time ?? Math.max(800, tickMs + 100);
   const lineGap = size + 8;
 
   try { alt1.overLaySetGroup(OVERLAY_GROUP); } catch {}
-
-  lines.forEach((txt, i) => {
-    const c = colors[i] ?? COLOR_WHITE();
-    // crude width estimate for centering: size * 0.6 per character
-    const est = Math.floor((txt?.length ?? 0) * size * 0.6);
+  for (let i = 0; i < lines.length; i++) {
+    const txt = String(lines[i] ?? "");
+    // rough width estimate so we can center x-position
+    const est = Math.floor(txt.length * size * 0.6);
     const x = cx - Math.floor(est / 2);
     const y = cy + Math.floor((i - (lines.length - 1) / 2) * lineGap);
-    try { alt1.overLayText(txt, c, size, x, y, lifetime); } catch {}
-  });
-
+    try { alt1.overLayText(txt, A1lib.mixColor(255,255,255), size, x, y, lifetime); } catch {}
+  }
   try { alt1.overLaySetGroup(""); } catch {}
 }
 
-// HIGH-LEVEL: these mirror your UI functions so we don’t touch their internals
-function overlay_showOrder(orderArr){
-  // show three lines: Top (selected), then the next two
-  const colors = orderArr.map(roleColor);
-  drawCenterLines(orderArr, { size: 36, colors });
-}
-function overlay_showSolo(role){
-  drawCenterLines([role], { size: 44, colors:[roleColor(role)] });
-}
-function overlay_showMessage(msg){
-  drawCenterLines([msg], { size: 36, colors:[COLOR_WHITE()] });
-}
-function overlay_showTimers({swapStr, clickStr}){
-  drawCenterLines([swapStr, clickStr], { size: 34, colors:[COLOR_WHITE(), COLOR_WHITE()] });
-}
-/* ==================================================================== */
+/* Convenience wrappers mirroring your UI actions */
+function overlayShowMessage(msg){ centerOverlayLines([msg], 36); }
+function overlayShowOrder(orderArr){ centerOverlayLines(orderArr, 36); }
+function overlayShowSolo(role){ centerOverlayLines([role], 44); }
+function overlayShowTimers(swapStr, clickStr){ centerOverlayLines([swapStr, clickStr], 34); }
+/* ====================================================================== */
 
 function clearActiveTimers() {
   activeIntervals.forEach(clearInterval);
@@ -220,8 +162,8 @@ function resetUI() {
     rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected", "callout", "flash");
   }
 
-  /* added: also clear the center overlay on reset */
-  clearCenterOverlay();
+  // ADDED: wipe center text on reset
+  centerOverlayClear();
 }
 
 function showMessage(text) {
@@ -263,8 +205,8 @@ function showMessage(text) {
   log(`✅ ${text}`);
   autoResetIn10s();
 
-  /* added: mirror message to center overlay */
-  overlay_showMessage(text);
+  // ADDED: mirror as plain center text
+  overlayShowMessage(text);
 }
 
 const RESPONSES = {
@@ -298,8 +240,8 @@ function updateUI(key) {
   log(`✅ ${RESPONSES[key]}`);
   autoResetIn10s();
 
-  /* added: mirror W/G/P order to center overlay */
-  overlay_showOrder(order);
+  // ADDED: center 3-line order
+  overlayShowOrder(order);
 }
 
 const reader = new Chatbox.default();
@@ -379,10 +321,10 @@ function makeSnuffedInterval() {
     if (clickRemaining >= period - 1e-6) clickRemaining = 0;
     setRow(1, `Click in: ${fmt(clickRemaining)}s`);
 
-    /* added: mirror timers to center overlay */
+    // ADDED: mirror timers as two centered lines (plain text)
     const swapStr = `Swap side: ${fmt(Math.max(0, swapRemaining))}s`;
     const clickStr = `Click in: ${fmt(clickRemaining)}s`;
-    overlay_showTimers({ swapStr, clickStr });
+    overlayShowTimers(swapStr, clickStr);
   }, tickMs);
 
   activeIntervals.push(iv);
@@ -422,14 +364,14 @@ function stopSnuffedTimersAndReset() {
   [0, 1, 2].forEach(clearRow);
   resetUI();
 
-  /* added: ensure overlay is cleared when timers stop */
-  clearCenterOverlay();
+  // ADDED: clear center text as well
+  centerOverlayClear();
 }
 
 let lastSig = "";
 let lastAt = 0;
 
-/* ==== Added: colored, auto-clearing solo messages ==== */
+/* ==== Added: colored, auto-clearing solo messages (logic kept) ==== */
 function showSolo(role, cls) {
   const rows = document.querySelectorAll("#spec tr");
   if (!rows.length) return;
@@ -442,7 +384,7 @@ function showSolo(role, cls) {
     rows[i].style.display = "none";
   }
 
-  // show on row 0 with color
+  // show on row 0
   const row = rows[0];
   if (row) {
     const cell = row.querySelector("td");
@@ -455,8 +397,8 @@ function showSolo(role, cls) {
   const t = setTimeout(() => { clearRow(0); }, 4000);
   activeTimeouts.push(t);
 
-  /* added: mirror SOLO to center overlay */
-  overlay_showSolo(role);
+  // ADDED: mirror solo as single centered line (plain text)
+  overlayShowSolo(role);
 }
 /* ======================================================= */
 
@@ -502,33 +444,30 @@ function onAmascutLine(full, lineId) {
   }
 
   const now = Date.now();
-    if (key !== "snuffed") {
-  const sig = key + "|" + raw.slice(-80);
+  if (key !== "snuffed") {
+    const sig = key + "|" + raw.slice(-80);
     if (sig === lastSig && now - lastAt < 1200) return;
-  lastSig = sig;
-  lastAt = now;
-}
-
+    lastSig = sig;
+    lastAt = now;
+  }
 
   if (key === "snuffed") {
-  if (snuffStartAt) {
-    log("⚡ Snuffed out already active — ignoring duplicate");
+    if (snuffStartAt) {
+      log("⚡ Snuffed out already active — ignoring duplicate");
+      return;
+    }
+    log("⚡ Snuffed out detected — starting timers");
+    startSnuffedTimers();
     return;
   }
-  log("⚡ Snuffed out detected — starting timers");
-  startSnuffedTimers();
-  return;
-}
 
   if (key === "newdawn") {
     log("🌅 A new dawn — resetting timers");
     stopSnuffedTimersAndReset();
     snuffStartAt = 0;
-    /* added: also clear overlay on 'new dawn' */
-    clearCenterOverlay();
+    centerOverlayClear();
     return;
   }
-
 
   if (key === "tear") {
     showMessage("Scarabs + Bend the knee shortly");
@@ -543,11 +482,11 @@ function onAmascutLine(full, lineId) {
   } else if (key === "scabaras") {
     showMessage("Scabaras (NE)");
   } else if (key === "soloWeakMagic") {
-    showSolo("Magic", "role-magic");   // blue
+    showSolo("Magic", "role-magic");
   } else if (key === "soloMelee") {
-    showSolo("Melee", "role-melee");   // red
+    showSolo("Melee", "role-melee");
   } else if (key === "soloRange") {
-    showSolo("Range", "role-range");   // green
+    showSolo("Range", "role-range");
   } else {
     // weak / grovel / pathetic — same behavior
     updateUI(key);
