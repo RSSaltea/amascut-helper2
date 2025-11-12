@@ -119,12 +119,11 @@ let tickMs = 600; // default 0.6s display tick
     .ah-row label{font-size:12px;min-width:110px}
     .ah-row input[type="range"]{flex:1}
     .ah-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-    .ah-buttons > *{position:static !important; font-size:12px; line-height:1; padding:4px 8px; margin:0}
+    .ah-buttons > *{position:static !important; font-size:12px; line-height:1; padding:4px 8px; margin:0; color:#fff}
     .ah-mini{position:fixed;right:12px;bottom:12px;z-index:11051;background:#1b1f24;
       border:1px solid #444;border-radius:999px;padding:8px 12px;box-shadow:0 6px 16px #000a;
       color:#ddd;font-family:rs-pro-3;cursor:pointer;display:none;user-select:none}
     .ah-small{font-size:11px; opacity:.8}
-    .nisbutton.slim{height:auto; line-height:1; font-size:12px; padding:4px 8px}
   `;
   document.head.appendChild(style);
 
@@ -145,12 +144,8 @@ let tickMs = 600; // default 0.6s display tick
       <input id="ah-enable" type="checkbox">
       <span id="ah-enable-state"></span>
     </div>
-    <div class="ah-row">
-      <label>Position</label>
-      <button id="ah-set-pos" class="nisbutton slim">Set overlay position</button>
-      <span id="ah-pos-val" class="ah-small"></span>
-    </div>
     <div class="ah-buttons" id="ah-extra-btns"></div>
+    <div class="ah-row"><span id="ah-pos-val" class="ah-small"></span></div>
   `;
   document.body.appendChild(panel);
 
@@ -204,60 +199,10 @@ let tickMs = 600; // default 0.6s display tick
   // show current position
   const posVal = panel.querySelector("#ah-pos-val");
   const updatePosLabel = () => {
-    if (overlayPos) posVal.textContent = `(${overlayPos.x}, ${overlayPos.y})`;
-    else posVal.textContent = `(centered)`;
+    if (overlayPos) posVal.textContent = `Position: (${overlayPos.x}, ${overlayPos.y})`;
+    else posVal.textContent = `Position: centered`;
   };
   updatePosLabel();
-
-  // NEW: Set overlay position with Alt+1
-  const setPosBtn = panel.querySelector("#ah-set-pos");
-  let posMode = false;
-  let posKeyHandler = null;
-
-  function exitPosMode() {
-    if (!posMode) return;
-    posMode = false;
-    setPosBtn.textContent = "Set overlay position";
-    try { alt1 && alt1.clearTooltip && alt1.clearTooltip(); } catch {}
-    if (posKeyHandler) {
-      window.removeEventListener("keydown", posKeyHandler, true);
-      posKeyHandler = null;
-    }
-  }
-
-  function enterPosMode() {
-    if (posMode) return;
-    posMode = true;
-    setPosBtn.textContent = "Setting… (Alt+1)";
-    try { alt1 && alt1.setTooltip && alt1.setTooltip("Move cursor, press Alt+1 to save overlay position"); } catch {}
-
-    posKeyHandler = (e) => {
-      // Detect Alt+1
-      if (e.altKey && (e.key === "1" || e.code === "Digit1")) {
-        e.preventDefault();
-        try {
-          const mp = (window.a1lib && a1lib.getMousePosition && a1lib.getMousePosition()) || null;
-          if (mp && Number.isFinite(mp.x) && Number.isFinite(mp.y)) {
-            overlayPos = { x: Math.max(0, Math.floor(mp.x)), y: Math.max(0, Math.floor(mp.y)) };
-            localStorage.setItem("amascut.overlayPos", JSON.stringify(overlayPos));
-            updatePosLabel();
-            log(`📍 Overlay position set to ${overlayPos.x}, ${overlayPos.y}`);
-          } else {
-            log("⚠️ Could not read mouse position from a1lib.");
-          }
-        } catch (err) {
-          console.error(err);
-          log("⚠️ Error while setting overlay position.");
-        }
-        exitPosMode();
-      }
-    };
-    window.addEventListener("keydown", posKeyHandler, true);
-  }
-
-  setPosBtn.addEventListener("click", () => {
-    if (posMode) exitPosMode(); else enterPosMode();
-  });
 
   // move existing buttons into panel
   const extra = panel.querySelector("#ah-extra-btns");
@@ -268,6 +213,52 @@ let tickMs = 600; // default 0.6s display tick
     btn.style.position = "static";
     btn.style.margin = "0";
     extra.appendChild(btn);
+  });
+
+  // === NEW: Set position small control (same style group) ===
+  const setPos = document.createElement("button");
+  setPos.textContent = "Set pos";
+  setPos.style.border = "1px solid #444";
+  setPos.style.background = "#222";
+  setPos.style.borderRadius = "4px";
+  setPos.style.cursor = "pointer";
+  setPos.style.color = "#fff"; // make text white like others
+  extra.appendChild(setPos);
+
+  let posMode = false;
+  let posRaf = 0;
+
+  function stopPosMode(saveNow = false){
+    posMode = false;
+    setPos.textContent = "Set pos";
+    try { alt1 && alt1.clearTooltip && alt1.clearTooltip(); } catch {}
+    if (posRaf) cancelAnimationFrame(posRaf), posRaf = 0;
+    if (saveNow && overlayPos) {
+      localStorage.setItem("amascut.overlayPos", JSON.stringify(overlayPos));
+      updatePosLabel();
+      log(`📍 Overlay position set to ${overlayPos.x}, ${overlayPos.y}`);
+    }
+  }
+
+  function startPosMode(){
+    if (posMode) return;
+    posMode = true;
+    setPos.textContent = "Setting… (click again)";
+    try { alt1 && alt1.setTooltip && alt1.setTooltip("Move cursor to where you want the overlay; click again to lock."); } catch {}
+    const step = () => {
+      if (!posMode) return;
+      const mp = (window.a1lib && a1lib.getMousePosition && a1lib.getMousePosition()) || null;
+      if (mp && Number.isFinite(mp.x) && Number.isFinite(mp.y)) {
+        overlayPos = { x: Math.max(0, Math.floor(mp.x)), y: Math.max(0, Math.floor(mp.y)) };
+      }
+      posRaf = requestAnimationFrame(step);
+    };
+    posRaf = requestAnimationFrame(step);
+  }
+
+  setPos.addEventListener("click", () => {
+    if (posMode) stopPosMode(true);
+    else startPosMode();
   });
 })();
 /* ======================================== */
@@ -710,11 +701,11 @@ function centerFor(canvas) {
   };
 }
 
-/* NEW: choose position (custom top-left if set, else center) */
+/* Choose position (custom top-left if set, else center) */
 function positionFor(canvas) {
   if (overlayPos && Number.isFinite(overlayPos.x) && Number.isFinite(overlayPos.y)) {
     return { x: Math.max(0, Math.floor(overlayPos.x)), y: Math.max(0, Math.floor(overlayPos.y)) };
-  }
+    }
   return centerFor(canvas);
 }
 
