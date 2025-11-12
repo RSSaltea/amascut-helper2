@@ -126,6 +126,8 @@ function resetUI() {
     rows[i].style.display = "none";
     rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected", "callout", "flash");
   }
+
+  overlayHide(); // [OVERLAY+] also hide center overlay on reset
 }
 
 function showMessage(text) {
@@ -165,6 +167,7 @@ function showMessage(text) {
   }
 
   log(`✅ ${text}`);
+  overlaySetText([{ text, color: OVERLAY_COLORS.Default }]); // [OVERLAY+]
   autoResetIn10s();
 }
 
@@ -197,6 +200,12 @@ function updateUI(key) {
   });
 
   log(`✅ ${RESPONSES[key]}`);
+  // [OVERLAY+] show three bold colored lines in order
+  overlaySetText(order.map(role => ({
+    text: role,
+    color: OVERLAY_COLORS[role] || OVERLAY_COLORS.Default
+  })));
+
   autoResetIn10s();
 }
 
@@ -341,8 +350,9 @@ function showSolo(role, cls) {
     row.classList.add("selected","callout","flash",cls);
   }
 
-  // remove after 4 seconds
-  const t = setTimeout(() => { clearRow(0); }, 4000);
+  // [OVERLAY+] show a single colored bold line and clear it with the same timeout
+  overlaySetText([{ text: role, color: OVERLAY_COLORS[role] || OVERLAY_COLORS.Default }]);
+  const t = setTimeout(() => { clearRow(0); overlayHide(); }, 4000);
   activeTimeouts.push(t);
 }
 /* ======================================================= */
@@ -488,9 +498,7 @@ setTimeout(() => {
         log("✅ chatbox found");
         showSelected(reader.pos);
         setInterval(readChatbox, 250);
-
-        // [ADDED] start overlay when ready
-        try { startOverlay(); } catch (e) { console.error(e); }
+        // (no overlay auto-start; it appears only when text is set)
       }
     } catch (e) {
       log("⚠️ " + (e?.message || e));
@@ -505,137 +513,124 @@ function showSelected(pos) {
   } catch {}
 }
 
-// Lazily load html2canvas for element -> canvas capture
-async function ensureCaptureLib() {
-  if (window.html2canvas) return;
-  await new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-    s.crossOrigin = "anonymous";
-    s.onload = resolve;
-    s.onerror = () => reject(new Error("Failed to load html2canvas"));
-    document.head.appendChild(s);
-  });
-}
+// Overlay Module
 
-// Element -> Canvas (transparent)
-async function toCanvas(el, opts = {}) {
-  await ensureCaptureLib();
-  const scale = Math.max(0.5, window.devicePixelRatio || 1);
-  const canvas = await window.html2canvas(el, {
-    backgroundColor: null,
-    scale,
-    logging: false,
-    useCORS: true,
-    ...opts,
-  });
-  return canvas;
-}
-
-// Alt1 overlay controller
-const overlayCtl = {
-  group: "amascOverlayRegion",
-  raf: 0,
-  timer: 0,
-  refreshRate: 50,
-  running: false,
+// Colors for role names
+const OVERLAY_COLORS = {
+  Range: [60, 170, 80],   // green
+  Magic: [50, 90, 200],   // blue
+  Melee: [200, 60, 60],   // red
+  Default: [235, 235, 235]
 };
 
-function getRsClientSize() {
-  try {
-    const w = (alt1 && alt1.rsWidth) ? alt1.rsWidth : 800;
-    const h = (alt1 && alt1.rsHeight) ? alt1.rsHeight : 600;
-    return { w, h };
-  } catch { return { w: 800, h: 600 }; }
-}
+const OVERLAY_GROUP = "amascOverlayRegion";
+let ovRunning = false, ovTimer = 0, ovRaf = 0;
+let ovLines = null;     // [{text, color:[r,g,b]}]
+let ovRefresh = 50;     // ms
 
-function centerFor(canvas) {
-  const { w: rw, h: rh } = getRsClientSize();
-  return {
-    x: Math.max(0, Math.round((rw - canvas.width) / 2)),
-    y: Math.max(0, Math.round((rh - canvas.height) / 2)),
-  };
-}
-
-function clearOverlayGroup() {
-  try {
-    alt1.overLaySetGroup(overlayCtl.group);
-    alt1.overLayFreezeGroup(overlayCtl.group);
-    alt1.overLayClearGroup(overlayCtl.group);
-    alt1.overLayRefreshGroup(overlayCtl.group);
-  } catch {}
-}
-
-function scheduleNext(cb) {
-  overlayCtl.timer = window.setTimeout(() => {
-    overlayCtl.raf = window.requestAnimationFrame(cb);
-  }, overlayCtl.refreshRate);
-}
-
-// helper: a1lib/A1lib encoder (handles either global)
-function encodeImage(imgData) {
-  const enc = (window.a1lib && a1lib.encodeImageString) || (window.A1lib && A1lib.encodeImageString);
+function ovEncode(imgData) {
+  const enc =
+    (window.a1lib && a1lib.encodeImageString) ||
+    (window.A1lib && A1lib.encodeImageString);
   if (!enc) throw new Error("encodeImageString not found on a1lib/A1lib");
   return enc(imgData);
 }
 
-async function updateOverlayOnce() {
+function ovClear() {
   try {
-    if (!window.alt1) { scheduleNext(updateOverlayOnce); return; }
+    alt1.overLaySetGroup(OVERLAY_GROUP);
+    alt1.overLayFreezeGroup(OVERLAY_GROUP);
+    alt1.overLayClearGroup(OVERLAY_GROUP);
+    alt1.overLayRefreshGroup(OVERLAY_GROUP);
+  } catch {}
+}
 
-    const el = document.getElementById("spec");
-    if (!el) {
-      clearOverlayGroup();
-      scheduleNext(updateOverlayOnce);
-      return;
-    }
+function ovClientSize() {
+  try {
+    return {
+      w: (alt1 && alt1.rsWidth)  || 800,
+      h: (alt1 && alt1.rsHeight) || 600
+    };
+  } catch { return { w: 800, h: 600 }; }
+}
 
-    const prevBg = el.style.background;
-    el.style.background = "transparent";
+function ovRenderCanvas(lines) {
+  // Build a tiny canvas with bold text; no background.
+  const pad = 8, gap = 6, fontPx = 22; // tweak font size here
+  const font = `bold ${fontPx}px Arial`;
 
-    const canvas = await toCanvas(el);
-    const ctx = canvas.getContext("2d");
-    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pos = centerFor(canvas);
+  const c = document.createElement("canvas");
+  const ctx = c.getContext("2d");
+  ctx.font = font;
 
-    if (img && img.width > 0 && img.height > 0) {
-      alt1.overLaySetGroup(overlayCtl.group);
-      alt1.overLayFreezeGroup(overlayCtl.group);
-      alt1.overLayClearGroup(overlayCtl.group);
-      alt1.overLayImage(
-        pos.x,
-        pos.y,
-        encodeImage(img),
-        img.width,
-        overlayCtl.refreshRate
-      );
-      alt1.overLayRefreshGroup(overlayCtl.group);
+  let maxW = 0;
+  for (const l of lines) maxW = Math.max(maxW, Math.ceil(ctx.measureText(l.text).width));
+  const w = maxW + pad * 2;
+  const h = (fontPx * lines.length) + (gap * (lines.length - 1)) + pad * 2;
+
+  c.width = w; c.height = h;
+  ctx.font = font;
+  ctx.textBaseline = "top";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 3; // outline thickness for readability
+
+  lines.forEach((l, i) => {
+    const y = pad + i * (fontPx + gap);
+    const [r, g, b] = l.color || OVERLAY_COLORS.Default;
+    ctx.strokeStyle = "black";
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.strokeText(l.text, pad, y);
+    ctx.fillText(l.text, pad, y);
+  });
+
+  return c;
+}
+
+function ovTick() {
+  if (!ovRunning) return;
+  try {
+    if (!ovLines || !ovLines.length || !window.alt1) {
+      ovClear();
     } else {
-      clearOverlayGroup();
-    }
+      const canvas = ovRenderCanvas(ovLines);
+      const img = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+      const { w: rw, h: rh } = ovClientSize();
+      const x = Math.max(0, Math.round((rw - canvas.width)  / 2));
+      const y = Math.max(0, Math.round((rh - canvas.height) / 2));
 
-    el.style.background = prevBg;
+      alt1.overLaySetGroup(OVERLAY_GROUP);
+      alt1.overLayFreezeGroup(OVERLAY_GROUP);
+      alt1.overLayClearGroup(OVERLAY_GROUP);
+      alt1.overLayImage(x, y, ovEncode(img), img.width, ovRefresh);
+      alt1.overLayRefreshGroup(OVERLAY_GROUP);
+    }
   } catch (e) {
     console.error(e);
-    clearOverlayGroup();
+    ovClear();
   } finally {
-    if (overlayCtl.running) scheduleNext(updateOverlayOnce);
+    ovTimer = setTimeout(() => { ovRaf = requestAnimationFrame(ovTick); }, ovRefresh);
   }
 }
 
-function startOverlay(opts = {}) {
-  overlayCtl.refreshRate = Number(opts.refreshRate) || 50;
-  if (overlayCtl.running) return;
-  overlayCtl.running = true;
-  clearOverlayGroup();
-  scheduleNext(updateOverlayOnce);
+function overlaySetText(lines, opts = {}) {
+  // lines: array of { text: string, color: [r,g,b] }
+  ovRefresh = Number(opts.refreshRate) || ovRefresh;
+  ovLines = lines && lines.length ? lines : null;
+
+  if (ovLines && !ovRunning) {
+    ovRunning = true;
+    ovTick();
+  }
+  if (!ovLines && ovRunning) {
+    overlayHide();
+  }
 }
 
-function stopOverlay() {
-  overlayCtl.running = false;
-  try { if (overlayCtl.raf) cancelAnimationFrame(overlayCtl.raf); } catch {}
-  try { if (overlayCtl.timer) clearTimeout(overlayCtl.timer); } catch {}
-  overlayCtl.raf = 0;
-  overlayCtl.timer = 0;
-  clearOverlayGroup();
+function overlayHide() {
+  ovRunning = false;
+  try { if (ovRaf) cancelAnimationFrame(ovRaf); } catch {}
+  try { if (ovTimer) clearTimeout(ovTimer); } catch {}
+  ovRaf = 0; ovTimer = 0;
+  ovLines = null;
+  ovClear();
 }
