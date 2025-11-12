@@ -389,23 +389,22 @@ function onAmascutLine(full, lineId) {
   }
 
   const now = Date.now();
-    if (key !== "snuffed") {
-  const sig = key + "|" + raw.slice(-80);
+  if (key !== "snuffed") {
+    const sig = key + "|" + raw.slice(-80);
     if (sig === lastSig && now - lastAt < 1200) return;
-  lastSig = sig;
-  lastAt = now;
-}
-
+    lastSig = sig;
+    lastAt = now;
+  }
 
   if (key === "snuffed") {
-  if (snuffStartAt) {
-    log("⚡ Snuffed out already active — ignoring duplicate");
+    if (snuffStartAt) {
+      log("⚡ Snuffed out already active — ignoring duplicate");
+      return;
+    }
+    log("⚡ Snuffed out detected — starting timers");
+    startSnuffedTimers();
     return;
   }
-  log("⚡ Snuffed out detected — starting timers");
-  startSnuffedTimers();
-  return;
-}
 
   if (key === "newdawn") {
     log("🌅 A new dawn — resetting timers");
@@ -413,7 +412,6 @@ function onAmascutLine(full, lineId) {
     snuffStartAt = 0;
     return;
   }
-
 
   if (key === "tear") {
     showMessage("Scarabs + Bend the knee shortly");
@@ -505,34 +503,12 @@ function showSelected(pos) {
   } catch {}
 }
 
-// Lazily load html2canvas for element -> canvas capture
-async function ensureCaptureLib() {
-  if (window.html2canvas) return;
-  await new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-    s.crossOrigin = "anonymous";
-    s.onload = resolve;
-    s.onerror = () => reject(new Error("Failed to load html2canvas"));
-    document.head.appendChild(s);
-  });
-}
+/* ===================== REMOVED (html2canvas capture) ===================== */
+/* ensureCaptureLib / toCanvas functions were removed — we no longer render
+   the DOM table; we draw bold text into an off-screen canvas instead. */
+/* ======================================================================== */
 
-// Element -> Canvas (transparent)
-async function toCanvas(el, opts = {}) {
-  await ensureCaptureLib();
-  const scale = Math.max(0.5, window.devicePixelRatio || 1);
-  const canvas = await window.html2canvas(el, {
-    backgroundColor: null,
-    scale,
-    logging: false,
-    useCORS: true,
-    ...opts,
-  });
-  return canvas;
-}
-
-// Alt1 overlay controller
+/* ===== Alt1 overlay controller ===== */
 const overlayCtl = {
   group: "amascOverlayRegion",
   raf: 0,
@@ -579,21 +555,86 @@ function encodeImage(imgData) {
   return enc(imgData);
 }
 
+/* ==================== ADDED: text-only overlay ==================== */
+function gatherSpecLines() {
+  const rows = document.querySelectorAll("#spec tr");
+  const lines = [];
+  rows.forEach((row) => {
+    if (row.style.display === "none") return;
+    const td = row.querySelector("td");
+    const text = (td?.textContent || "").trim();
+    if (!text) return;
+
+    // Map role classes to colors (tweak if you like)
+    let color = "#FFFFFF";
+    if (row.classList.contains("role-range")) color = "#1fb34f"; // green
+    else if (row.classList.contains("role-magic")) color = "#3a67ff"; // blue
+    else if (row.classList.contains("role-melee")) color = "#e13b3b"; // red
+
+    lines.push({ text, color });
+  });
+  return lines;
+}
+
+function renderLinesToCanvas(lines) {
+  const { w: rw } = getRsClientSize();
+  const fontSize = Math.round(Math.min(64, Math.max(28, rw * 0.045)));
+  const pad = 12;
+  const gap = 6;
+
+  // measure
+  const m = document.createElement("canvas");
+  const mctx = m.getContext("2d");
+  mctx.font = `bold ${fontSize}px system-ui, -apple-system, Segoe UI, Arial, sans-serif`;
+
+  let maxW = 0;
+  for (const { text } of lines) {
+    const w = Math.ceil(mctx.measureText(text).width);
+    if (w > maxW) maxW = w;
+  }
+  const lineH = fontSize + gap;
+  const cw = Math.max(1, maxW + pad * 2);
+  const ch = Math.max(1, lines.length * lineH + pad * 2);
+
+  const c = document.createElement("canvas");
+  c.width = cw;
+  c.height = ch;
+
+  const ctx = c.getContext("2d");
+  ctx.font = `bold ${fontSize}px system-ui, -apple-system, Segoe UI, Arial, sans-serif`;
+  ctx.textBaseline = "top";
+
+  const outline = Math.max(2, Math.round(fontSize / 10));
+  let y = pad;
+  for (const { text, color } of lines) {
+    const x = pad;
+
+    ctx.lineWidth = outline;
+    ctx.strokeStyle = "rgba(0,0,0,0.85)"; // outline for readability
+    ctx.strokeText(text, x, y);
+
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+
+    y += lineH;
+  }
+  return c;
+}
+/* ================================================================= */
+
 async function updateOverlayOnce() {
   try {
     if (!window.alt1) { scheduleNext(updateOverlayOnce); return; }
 
-    const el = document.getElementById("spec");
-    if (!el) {
+    // build an image containing ONLY the visible lines as bold text
+    const lines = gatherSpecLines();
+    if (!lines.length) {
       clearOverlayGroup();
       scheduleNext(updateOverlayOnce);
       return;
     }
 
-    const prevBg = el.style.background;
-    el.style.background = "transparent";
-
-    const canvas = await toCanvas(el);
+    const canvas = renderLinesToCanvas(lines);
     const ctx = canvas.getContext("2d");
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const pos = centerFor(canvas);
@@ -613,8 +654,6 @@ async function updateOverlayOnce() {
     } else {
       clearOverlayGroup();
     }
-
-    el.style.background = prevBg;
   } catch (e) {
     console.error(e);
     clearOverlayGroup();
