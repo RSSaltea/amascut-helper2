@@ -96,26 +96,34 @@ let tickMs = 600; // default 0.6s display tick
 })();
 /* ============================================ */
 
-/* ===== Options panel (bottom-right) ===== */
+/* ===== Options panel (bottom-right) + minimise button ===== */
 (function injectOptionsPanel(){
   const style = document.createElement("style");
   style.textContent = `
     .ah-panel{position:fixed;right:12px;bottom:12px;z-index:11050;min-width:240px;
-      background:#1b1f24cc;border:1px solid #444;border-radius:8px;padding:10px;
+      background:#1b1f24cc;border:1px solid #444;border-radius:8px;padding:10px 10px 8px 10px;
       box-shadow:0 6px 16px #000a;font-family:rs-pro-3;color:#ddd}
-    .ah-panel h4{margin:0 0 8px 0;font-size:14px;color:#fff}
+    .ah-panel h4{margin:0 0 8px 0;font-size:14px;color:#fff;position:relative;padding-right:60px}
+    .ah-min-btn{position:absolute;right:0;top:-2px;font-size:12px;padding:4px 8px;border:1px solid #555;
+      background:#222;color:#ddd;border-radius:4px;cursor:pointer}
     .ah-row{display:flex;align-items:center;gap:8px;margin:6px 0}
     .ah-row label{font-size:12px;min-width:90px}
     .ah-row input[type="range"]{flex:1}
     .ah-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
     .ah-buttons > *{position:static !important; font-size:12px; line-height:1; padding:4px 8px; margin:0}
+    .ah-mini{position:fixed;right:12px;bottom:12px;z-index:11051;background:#1b1f24;
+      border:1px solid #444;border-radius:999px;padding:8px 12px;box-shadow:0 6px 16px #000a;
+      color:#ddd;font-family:rs-pro-3;cursor:pointer;display:none;user-select:none}
   `;
   document.head.appendChild(style);
 
   const panel = document.createElement("div");
   panel.className = "ah-panel";
   panel.innerHTML = `
-    <h4>Amascut Helper – Options</h4>
+    <h4>
+      Amascut Helper – Options
+      <button id="ah-panel-min" class="ah-min-btn" title="Minimise">Minimise</button>
+    </h4>
     <div class="ah-row">
       <label for="ah-size">Overlay size</label>
       <input id="ah-size" type="range" min="0.5" max="2" step="0.05">
@@ -129,6 +137,29 @@ let tickMs = 600; // default 0.6s display tick
     <div class="ah-buttons" id="ah-extra-btns"></div>
   `;
   document.body.appendChild(panel);
+
+  // mini restore button (shown when panel minimised)
+  const mini = document.createElement("div");
+  mini.className = "ah-mini";
+  mini.id = "ah-panel-mini";
+  mini.textContent = "AH ⚙";
+  document.body.appendChild(mini);
+
+  // persist minimise state
+  let panelMin = (localStorage.getItem("amascut.panelMin") ?? "false") === "true";
+  function setPanelMin(min){
+    panelMin = !!min;
+    panel.style.display = panelMin ? "none" : "block";
+    mini.style.display = panelMin ? "block" : "none";
+    try { localStorage.setItem("amascut.panelMin", String(panelMin)); } catch {}
+  }
+
+  // header minimise button
+  panel.querySelector("#ah-panel-min").addEventListener("click", () => setPanelMin(true));
+  // mini restore click
+  mini.addEventListener("click", () => setPanelMin(false));
+  // initialise
+  setPanelMin(panelMin);
 
   // wire size
   const size = panel.querySelector("#ah-size");
