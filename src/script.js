@@ -104,7 +104,6 @@ function autoResetIn10s() {
     log("↺ UI reset");
   }, 10000);
   lastDisplayAt = Date.now();
-  markActivity(); // <<< make sure overlay watchdog is aware
 }
 
 function resetUI() {
@@ -167,7 +166,6 @@ function showMessage(text) {
 
   log(`✅ ${text}`);
   autoResetIn10s();
-  markActivity(); // <<<
 }
 
 const RESPONSES = {
@@ -200,7 +198,6 @@ function updateUI(key) {
 
   log(`✅ ${RESPONSES[key]}`);
   autoResetIn10s();
-  markActivity(); // <<<
 }
 
 const reader = new Chatbox.default();
@@ -300,7 +297,6 @@ function startSnuffedTimers() {
 
   if (startSnuffedTimers._iv) { try { clearInterval(startSnuffedTimers._iv); } catch {} }
   startSnuffedTimers._iv = makeSnuffedInterval();
-  markActivity(); // <<<
 }
 
 function stopSnuffedTimersAndReset() {
@@ -348,7 +344,6 @@ function showSolo(role, cls) {
   // remove after 4 seconds
   const t = setTimeout(() => { clearRow(0); }, 4000);
   activeTimeouts.push(t);
-  markActivity(); // <<<
 }
 /* ======================================================= */
 
@@ -394,7 +389,6 @@ function onAmascutLine(full, lineId) {
   }
 
   const now = Date.now();
-  // <<< Faster duplicate suppression: 200ms (was 1200ms)
   if (key !== "snuffed") {
     const sig = key + "|" + raw.slice(-80);
     if (sig === lastSig && now - lastAt < 1200) return;
@@ -491,10 +485,9 @@ setTimeout(() => {
         clearInterval(finder);
         log("✅ chatbox found");
         showSelected(reader.pos);
-        // Faster polling: 100ms (was 250ms)
-        setInterval(readChatbox, 50);
+        setInterval(readChatbox, 250);
 
-        // start overlay when ready
+        // [ADDED] start overlay when ready
         try { startOverlay(); } catch (e) { console.error(e); }
       }
     } catch (e) {
@@ -510,18 +503,10 @@ function showSelected(pos) {
   } catch {}
 }
 
-/* ===== Overlay watchdog to guarantee hide ===== */
-let overlayLastActivity = 0;
-let overlayHideTimeout = 0;
-function markActivity() {
-  overlayLastActivity = Date.now();
-  if (overlayHideTimeout) clearTimeout(overlayHideTimeout);
-  // Force a full reset + overlay clear ~11s after last activity
-  overlayHideTimeout = setTimeout(() => {
-    stopSnuffedTimersAndReset();
-    clearOverlayGroup();
-  }, 11000);
-}
+/* ===================== REMOVED (html2canvas capture) ===================== */
+/* ensureCaptureLib / toCanvas functions were removed — we no longer render
+   the DOM table; we draw bold text into an off-screen canvas instead. */
+/* ======================================================================== */
 
 /* ===== Alt1 overlay controller ===== */
 const overlayCtl = {
@@ -570,7 +555,7 @@ function encodeImage(imgData) {
   return enc(imgData);
 }
 
-/* ==================== Text-only overlay (kept) ==================== */
+/* ==================== ADDED: text-only overlay ==================== */
 function gatherSpecLines() {
   const rows = document.querySelectorAll("#spec tr");
   const lines = [];
@@ -578,8 +563,7 @@ function gatherSpecLines() {
     if (row.style.display === "none") return;
     const td = row.querySelector("td");
     const text = (td?.textContent || "").trim();
-    // Filter out "Waiting..." so overlay stays hidden until a voice line fires
-    if (!text || /^waiting\.{0,3}$/i.test(text)) return;
+    if (!text) return;
 
     // Map role classes to colors (tweak if you like)
     let color = "#FFFFFF";
@@ -642,6 +626,7 @@ async function updateOverlayOnce() {
   try {
     if (!window.alt1) { scheduleNext(updateOverlayOnce); return; }
 
+    // build an image containing ONLY the visible lines as bold text
     const lines = gatherSpecLines();
     if (!lines.length) {
       clearOverlayGroup();
