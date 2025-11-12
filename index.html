@@ -2,40 +2,51 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Amascut HM v2</title>
+  <title>Amascut HM — Overlay</title>
 
+  <!-- Alt1 libs -->
   <script src="https://www.unpkg.com/alt1/dist/base/index.js"></script>
   <script src="https://www.unpkg.com/alt1/dist/ocr/index.js"></script>
   <script src="https://www.unpkg.com/alt1/dist/chatbox/index.js"></script>
 
+  <!-- NIS look + local styles (optional) -->
   <link rel="stylesheet" href="https://runeapps.org/nis/nis.css" />
   <link rel="stylesheet" href="./src/css/nis.css" />
   <link rel="stylesheet" href="./src/css/style.css" />
-  <link rel="stylesheet" href="./src/css/tooltipster.bundle.min.css" />
-  <link rel="stylesheet" href="./src/css/tooltipster.css" />
 
   <style>
-    body { font-family: Arial, sans-serif; color: #fff; background:#121212; }
-    #title { font-size: 24px; margin: 10px 0; text-align: center; }
-    .attacks { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    .attacks tr { background: linear-gradient(#534c44,#271d14,#190e03,#190e03,#241a11); }
-    .attacks td { border: 1px solid #913200; text-align:center; padding:10px; font-size:18px; }
-    #output { margin:8px 0; font-size:11px; opacity:.75; }
+    :root { color-scheme: dark; }
+    body { font-family: Arial, sans-serif; background:#0e0e0e; color:#eee; }
+    #title { font-size: 22px; margin: 10px 0; text-align: center; letter-spacing:.5px; }
+    #output { margin:8px 10px; font-size:11px; opacity:.8; max-height:220px; overflow:auto; }
+    .muted { opacity:.75 }
+    /* Fallback in-window table (kept for debugging / dev) */
+    table.attacks { width:100%; border-collapse:collapse; margin:10px 0 }
+    table.attacks tr { background:#1c1c1c; }
+    table.attacks td { border:1px solid #333; padding:8px; text-align:center; }
+    /* quick role hues (used only for the in-page table) */
+    .role-melee  { background:#3b0f0f !important; }
+    .role-range  { background:#0f2f14 !important; }
+    .role-magic  { background:#0e1638 !important; }
+    .callout { outline:2px solid #666; }
+    .flash { animation: flash .5s linear 2; }
+    @keyframes flash { 50% { filter:brightness(2); } }
   </style>
 </head>
 <body class="nis">
-  <div id="title">Amascut</div>
+  <div id="title">Amascut (HM) — Overlay + Chat Parser</div>
 
+  <!-- Optional on-page table (acts as a tiny debug UI) -->
   <table id="spec" class="attacks">
     <tbody>
-      <tr id="style1" class="selected"><td>Waiting..</td></tr>
-      <tr id="style2"><td></td></tr>
-      <tr id="style3"><td></td></tr>
+      <tr id="style1" class="selected"><td>Waiting...</td></tr>
+      <tr id="style2" style="display:none"><td></td></tr>
+      <tr id="style3" style="display:none"><td></td></tr>
     </tbody>
   </table>
 
-  <div id="output">
-  <!--<div id="output"></div>-->
+  <div class="muted" style="margin:8px 10px">Overlay shows in the middle of the RuneScape window. This table is just a fallback.</div>
+  <div id="output"></div>
 
   <script src="./src/script.js"></script>
 </body>
