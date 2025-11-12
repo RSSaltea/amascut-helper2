@@ -23,9 +23,9 @@ const seenLineIds = new Set();
 const seenLineQueue = [];
 
 let resetTimerId = null;
-let lastDisplayAt = 0;
-let activeIntervals = [];
-let activeTimeouts = [];
+let lastDisplayAt = 0; // for 10s window used by generic showMessage/updateUI
+let activeIntervals = []; // holds intervals for special timers so we can cancel them
+let activeTimeouts = [];  // holds timeouts for special timers so we can cancel them
 
 /* =========================
    Global overlay preferences
@@ -74,7 +74,7 @@ try {
 })();
 
 /* ==== Tick configuration & toggle ==== */
-let tickMs = 600;
+let tickMs = 600; // default 0.6s display tick
 
 (function injectTickToggle(){
   const style = document.createElement("style");
@@ -103,6 +103,7 @@ let tickMs = 600;
     }
   });
 })();
+/* ============================================ */
 
 /* ===== Options panel (bottom-right) + minimise button + Set pos ===== */
 let posMode = false;           // NEW: positioning mode flag
@@ -207,12 +208,13 @@ let posRaf = 0;                // NEW: RAF handle for mouse-follow
     extra.appendChild(btn);
   });
 
-  /* NEW: “Set pos” mini button (starts pos mode; save with Alt+1) */
+  /* NEW: “Set pos” mini button (starts pos mode; save with Alt+1 or click again) */
   const setPos = document.createElement("button");
-  setPos.textContent = "Set pos";
+  setPos.textContent = "Setting… (Alt+1)"; // initial text toggled below
   setPos.className = "ah-simple-btn";
   setPos.style.color = "#fff";
   extra.appendChild(setPos);
+  setPos.textContent = "Set pos"; // finalize default
 
   function stopPosMode(saveNow = false){
     posMode = false;
@@ -230,13 +232,18 @@ let posRaf = 0;                // NEW: RAF handle for mouse-follow
     if (posMode) return;
     posMode = true;
     setPos.textContent = "Setting… (Alt+1)";
-    try { alt1 && alt1.setTooltip && alt1.setTooltip("Press Alt+1 to save overlay position"); } catch {}
+    try { alt1 && alt1.setTooltip && alt1.setTooltip("Press Alt+1 to save overlay position!"); } catch {}
+
     const step = () => {
       if (!posMode) return;
+      // NEW: robust mouse position fallback chain
       const mp =
-        (window.a1lib && a1lib.getMousePosition && a1lib.getMousePosition()) ||
+        (window.a1lib && typeof a1lib.getMousePosition === "function" && a1lib.getMousePosition()) ||
+        (window.A1lib && typeof A1lib.getMousePosition === "function" && A1lib.getMousePosition()) ||
         null;
+
       if (mp && Number.isFinite(mp.x) && Number.isFinite(mp.y)) {
+        // Top-left of overlay at mouse pos; simple & predictable
         overlayPos = { x: Math.max(0, Math.floor(mp.x)), y: Math.max(0, Math.floor(mp.y)) };
       }
       posRaf = requestAnimationFrame(step);
@@ -245,28 +252,41 @@ let posRaf = 0;                // NEW: RAF handle for mouse-follow
   }
 
   setPos.addEventListener("click", () => {
-    if (posMode) { stopPosMode(false); } else { startPosMode(); }
+    // CHANGED: clicking again while positioning now SAVES
+    if (posMode) { stopPosMode(true); } else { startPosMode(); }
   });
 
-  /* NEW: Alt1 global hotkey — triggers when the Alt+1 hotkey is pressed */
-  try {
-    if (window.a1lib && typeof a1lib.on === "function") {
-      a1lib.on("alt1pressed", () => {
-        if (posMode) stopPosMode(true);
-      });
-    }
-  } catch (e) { console.error("Failed binding alt1pressed:", e); }
+  /* NEW: Alt1 global hotkey — try multiple bind styles */
+  const bindAlt1 = (handler) => {
+    try {
+      if (window.a1lib && typeof a1lib.on === "function") {
+        a1lib.on("alt1pressed", handler);
+        return true;
+      }
+    } catch {}
+    try {
+      if (window.A1lib && typeof A1lib.on === "function") {
+        A1lib.on("alt1pressed", handler);
+        return true;
+      }
+    } catch {}
+    return false;
+  };
+  const bound = bindAlt1(() => { if (posMode) stopPosMode(true); });
 
-  /* Fallback (won’t fire when RS has focus, but useful in debugging) */
+  /* Fallback (for debugging outside RS focus) */
   window.addEventListener("keydown", (e) => {
     if (posMode && e.altKey && (e.code === "Digit1" || e.key === "1")) {
       e.preventDefault();
       stopPosMode(true);
     }
   });
-})();
 
-/* ====== helpers/timers/UI (unchanged) ====== */
+  if (!bound) {
+    log("ℹ️ Alt+1 binding via a1lib.on not available; click Set pos again to save.");
+  }
+})();
+/* ======================================== */
 
 function clearActiveTimers() {
   activeIntervals.forEach(clearInterval);
@@ -408,6 +428,7 @@ function firstNonWhiteColor(seg) {
   return null;
 }
 
+/* Helpers to ensure rows are visible and to print on fixed rows */
 function setRow(i, text) {
   const rows = document.querySelectorAll("#spec tr");
   if (!rows[i]) return;
@@ -425,26 +446,30 @@ function clearRow(i) {
   rows[i].classList.remove("selected", "callout", "flash", "role-range", "role-magic", "role-melee");
 }
 
+/* format with one decimal (e.g., 14.4 → 14.4, 0.05 → 0.0) */
 function fmt(x) { return Math.max(0, x).toFixed(1); }
 
 let snuffStartAt = 0;
 
+/* ==== Added: shared interval builder for snuffed timers ==== */
 function makeSnuffedInterval() {
   const iv = setInterval(() => {
     const elapsed = (Date.now() - snuffStartAt) / 1000;
 
+    // --- Swap (14.4s one-shot) ---
     const swapRemaining = 14.4 - elapsed;
     if (swapRemaining <= 0) {
       if (!startSnuffedTimers._swapFrozen) {
         setRow(0, "Swap side: 0.0s");
-        startSnuffedTimers._swapFrozen = true;
-        const t = setTimeout(() => { clearRow(0); }, 5000);
+        startSnuffedTimers._swapFrozen = true; // no further updates
+        const t = setTimeout(() => { clearRow(0); }, 5000); // stay visible 5s, then remove
         activeTimeouts.push(t);
       }
     } else if (!startSnuffedTimers._swapFrozen) {
       setRow(0, `Swap side: ${fmt(swapRemaining)}s`);
     }
 
+    // --- Click-in (9.0s repeating) ---
     const period = 9.0;
     let clickRemaining = period - (elapsed % period);
     if (clickRemaining >= period - 1e-6) clickRemaining = 0;
@@ -454,6 +479,7 @@ function makeSnuffedInterval() {
   activeIntervals.push(iv);
   return iv;
 }
+/* ========================================================== */
 
 function startSnuffedTimers() {
   clearActiveTimers();
@@ -491,15 +517,20 @@ function stopSnuffedTimersAndReset() {
 let lastSig = "";
 let lastAt = 0;
 
+/* ==== Added: colored, auto-clearing solo messages ==== */
 function showSolo(role, cls) {
   const rows = document.querySelectorAll("#spec tr");
   if (!rows.length) return;
+
+  // clear all rows
   for (let i = 0; i < rows.length; i++) {
     rows[i].classList.remove("role-range","role-magic","role-melee","callout","flash","selected");
     const c = rows[i].querySelector("td");
     if (c) c.textContent = "";
     rows[i].style.display = "none";
   }
+
+  // show on row 0 with color
   const row = rows[0];
   if (row) {
     const cell = row.querySelector("td");
@@ -507,11 +538,17 @@ function showSolo(role, cls) {
     row.style.display = "table-row";
     row.classList.add("selected","callout","flash",cls);
   }
+
+  // remove after 4 seconds
   const t = setTimeout(() => { clearRow(0); }, 4000);
   activeTimeouts.push(t);
 }
+/* ======================================================= */
 
 function onAmascutLine(full, lineId) {
+  // (remove the early seenLineIds block here)
+
+  // Hard reset on session message
   if (/welcome to your session/i.test(full)) {
     log("🔄 Session welcome detected — full reset");
     stopSnuffedTimersAndReset();
@@ -538,6 +575,7 @@ function onAmascutLine(full, lineId) {
   else if (/Scabaras\.\.\.(?!\s*Het\.\.\.\s*Bear witness!?)/i.test(raw)) key = "scabaras";
   if (!key) return;
 
+  // Only dedupe with seenLineIds for NON-snuffed lines
   if (key !== "snuffed" && lineId) {
     if (seenLineIds.has(lineId)) return;
     seenLineIds.add(lineId);
@@ -586,12 +624,13 @@ function onAmascutLine(full, lineId) {
   } else if (key === "scabaras") {
     showMessage("Scabaras (NE)");
   } else if (key === "soloWeakMagic") {
-    showSolo("Magic", "role-magic");
+    showSolo("Magic", "role-magic");   // blue
   } else if (key === "soloMelee") {
-    showSolo("Melee", "role-melee");
+    showSolo("Melee", "role-melee");   // red
   } else if (key === "soloRange") {
-    showSolo("Range", "role-range");
+    showSolo("Range", "role-range");   // green
   } else {
+    // weak / grovel / pathetic — same behavior
     updateUI(key);
   }
 }
@@ -646,6 +685,7 @@ setTimeout(() => {
         showSelected(reader.pos);
         setInterval(readChatbox, 250);
 
+        // start overlay when ready
         try { startOverlay(); } catch (e) { console.error(e); }
       }
     } catch (e) {
@@ -709,6 +749,7 @@ function scheduleNext(cb) {
   }, overlayCtl.refreshRate);
 }
 
+// helper: a1lib/A1lib encoder (handles either global)
 function encodeImage(imgData) {
   const enc = (window.a1lib && a1lib.encodeImageString) || (window.A1lib && A1lib.encodeImageString);
   if (!enc) throw new Error("encodeImageString not found on a1lib/A1lib");
@@ -722,7 +763,7 @@ function gatherSpecLines() {
 
   // While positioning, force a visible label so you can see it move
   if (posMode) {
-    lines.push({ text: "Positioning…", color: "#FFFFFF" });
+    lines.push({ text: "Positioning...", color: "#FFFFFF" });
     return lines;
   }
 
@@ -733,9 +774,9 @@ function gatherSpecLines() {
     if (!text) return;
 
     let color = "#FFFFFF";
-    if (row.classList.contains("role-range")) color = "#1fb34f";
-    else if (row.classList.contains("role-magic")) color = "#3a67ff";
-    else if (row.classList.contains("role-melee")) color = "#e13b3b";
+    if (row.classList.contains("role-range")) color = "#1fb34f"; // green
+    else if (row.classList.contains("role-magic")) color = "#3a67ff"; // blue
+    else if (row.classList.contains("role-melee")) color = "#e13b3b"; // red
 
     lines.push({ text, color });
   });
@@ -744,11 +785,13 @@ function gatherSpecLines() {
 
 function renderLinesToCanvas(lines) {
   const { w: rw } = getRsClientSize();
+  // scale influenced by panel slider
   const baseSize = Math.round(Math.min(64, Math.max(28, rw * 0.045)));
   const fontSize = Math.max(14, Math.round(baseSize * overlayScale));
   const pad = 12;
   const gap = 6;
 
+  // measure
   const m = document.createElement("canvas");
   const mctx = m.getContext("2d");
   mctx.font = `bold ${fontSize}px system-ui, -apple-system, Segoe UI, Arial, sans-serif`;
@@ -774,21 +817,25 @@ function renderLinesToCanvas(lines) {
   let y = pad;
   for (const { text, color } of lines) {
     const x = pad;
+
     ctx.lineWidth = outline;
     ctx.strokeStyle = "rgba(0,0,0,0.85)";
     ctx.strokeText(text, x, y);
+
     ctx.fillStyle = color;
     ctx.fillText(text, x, y);
+
     y += lineH;
   }
   return c;
 }
+/* ================================================================= */
 
 async function updateOverlayOnce() {
   try {
     if (!window.alt1) { scheduleNext(updateOverlayOnce); return; }
 
-    if (!overlayEnabled) {
+    if (!overlayEnabled) { // obey panel toggle
       clearOverlayGroup();
       scheduleNext(updateOverlayOnce);
       return;
