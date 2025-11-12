@@ -196,7 +196,7 @@ let tickMs = 600; // default 0.6s display tick
     if (!overlayEnabled) clearOverlayGroup();
   });
 
-  // show current position
+  // show current position label
   const posVal = panel.querySelector("#ah-pos-val");
   const updatePosLabel = () => {
     if (overlayPos) posVal.textContent = `Position: (${overlayPos.x}, ${overlayPos.y})`;
@@ -215,14 +215,14 @@ let tickMs = 600; // default 0.6s display tick
     extra.appendChild(btn);
   });
 
-  // === NEW: Set position small control (same style group) ===
+  // === NEW: Set position mini control (starts pos mode; finish with Alt+1) ===
   const setPos = document.createElement("button");
   setPos.textContent = "Set pos";
   setPos.style.border = "1px solid #444";
   setPos.style.background = "#222";
   setPos.style.borderRadius = "4px";
   setPos.style.cursor = "pointer";
-  setPos.style.color = "#fff"; // make text white like others
+  setPos.style.color = "#fff";
   extra.appendChild(setPos);
 
   let posMode = false;
@@ -243,8 +243,8 @@ let tickMs = 600; // default 0.6s display tick
   function startPosMode(){
     if (posMode) return;
     posMode = true;
-    setPos.textContent = "Setting… (click again)";
-    try { alt1 && alt1.setTooltip && alt1.setTooltip("Move cursor to where you want the overlay; click again to lock."); } catch {}
+    setPos.textContent = "Setting… (Alt+1 to save)";
+    try { alt1 && alt1.setTooltip && alt1.setTooltip("Move cursor to where you want the overlay, press Alt+1 to save."); } catch {}
     const step = () => {
       if (!posMode) return;
       const mp = (window.a1lib && a1lib.getMousePosition && a1lib.getMousePosition()) || null;
@@ -256,10 +256,21 @@ let tickMs = 600; // default 0.6s display tick
     posRaf = requestAnimationFrame(step);
   }
 
+  // click to start/cancel positioning
   setPos.addEventListener("click", () => {
-    if (posMode) stopPosMode(true);
-    else startPosMode();
+    if (posMode) { stopPosMode(false); } else { startPosMode(); }
   });
+
+  // === NEW: Alt1 global hotkey — fires even with RS focused ===
+  try {
+    if (window.a1lib && a1lib.on) {
+      a1lib.on("alt1pressed", () => {
+        if (posMode) stopPosMode(true); // save & exit on Alt+1
+      });
+    }
+  } catch (e) {
+    console.error("Failed binding alt1pressed:", e);
+  }
 })();
 /* ======================================== */
 
