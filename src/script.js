@@ -114,7 +114,7 @@ function resetUI() {
 
   if (rows[0]) {
     const c0 = rows[0].querySelector("td");
-    if (c0) c0.textContent = "Waiting...";
+    if (c0) c0.textContent = ".";
     rows[0].style.display = "";
     rows[0].classList.remove("role-range", "role-magic", "role-melee", "callout", "flash");
     rows[0].classList.add("selected");
@@ -503,6 +503,11 @@ function showSelected(pos) {
   } catch {}
 }
 
+/* ===================== REMOVED (html2canvas capture) ===================== */
+/* ensureCaptureLib / toCanvas functions were removed — we no longer render
+   the DOM table; we draw bold text into an off-screen canvas instead. */
+/* ======================================================================== */
+
 /* ===== Alt1 overlay controller ===== */
 const overlayCtl = {
   group: "amascOverlayRegion",
@@ -550,7 +555,7 @@ function encodeImage(imgData) {
   return enc(imgData);
 }
 
-/* ==================== Text-only overlay (unchanged except for Waiting filter) ==================== */
+/* ==================== ADDED: text-only overlay ==================== */
 function gatherSpecLines() {
   const rows = document.querySelectorAll("#spec tr");
   const lines = [];
@@ -558,8 +563,7 @@ function gatherSpecLines() {
     if (row.style.display === "none") return;
     const td = row.querySelector("td");
     const text = (td?.textContent || "").trim();
-    // >>> Filter out "Waiting..." so overlay stays hidden until a voice line fires
-    if (!text || /^waiting\.{0,3}$/i.test(text)) return;
+    if (!text) return;
 
     // Map role classes to colors (tweak if you like)
     let color = "#FFFFFF";
