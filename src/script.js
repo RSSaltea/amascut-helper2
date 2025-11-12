@@ -114,7 +114,7 @@ function resetUI() {
 
   if (rows[0]) {
     const c0 = rows[0].querySelector("td");
-    if (c0) c0.textContent = "";
+    if (c0) c0.textContent = "Waiting...";
     rows[0].style.display = "";
     rows[0].classList.remove("role-range", "role-magic", "role-melee", "callout", "flash");
     rows[0].classList.add("selected");
