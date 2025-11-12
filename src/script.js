@@ -34,6 +34,15 @@ let overlayScale = Number(localStorage.getItem("amascut.overlayScale") || "1");
 if (!(overlayScale >= 0.25 && overlayScale <= 2.0)) overlayScale = 1;
 let overlayEnabled = (localStorage.getItem("amascut.overlayEnabled") ?? "true") === "true";
 
+/* NEW: persistent overlay position (top-left) */
+let overlayPos = null;
+try {
+  const stored = JSON.parse(localStorage.getItem("amascut.overlayPos") || "null");
+  if (stored && Number.isFinite(stored.x) && Number.isFinite(stored.y)) {
+    overlayPos = { x: stored.x, y: stored.y };
+  }
+} catch {}
+
 /* ---------- Logs toggle ---------- */
 (function injectLogsToggle(){
   const style = document.createElement("style");
@@ -100,20 +109,22 @@ let tickMs = 600; // default 0.6s display tick
 (function injectOptionsPanel(){
   const style = document.createElement("style");
   style.textContent = `
-    .ah-panel{position:fixed;right:12px;bottom:12px;z-index:11050;min-width:240px;
+    .ah-panel{position:fixed;right:12px;bottom:12px;z-index:11050;min-width:260px;
       background:#1b1f24cc;border:1px solid #444;border-radius:8px;padding:10px 10px 8px 10px;
       box-shadow:0 6px 16px #000a;font-family:rs-pro-3;color:#ddd}
     .ah-panel h4{margin:0 0 8px 0;font-size:14px;color:#fff;position:relative;padding-right:60px}
     .ah-min-btn{position:absolute;right:0;top:-2px;font-size:12px;padding:4px 8px;border:1px solid #555;
       background:#222;color:#ddd;border-radius:4px;cursor:pointer}
     .ah-row{display:flex;align-items:center;gap:8px;margin:6px 0}
-    .ah-row label{font-size:12px;min-width:90px}
+    .ah-row label{font-size:12px;min-width:110px}
     .ah-row input[type="range"]{flex:1}
     .ah-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
     .ah-buttons > *{position:static !important; font-size:12px; line-height:1; padding:4px 8px; margin:0}
     .ah-mini{position:fixed;right:12px;bottom:12px;z-index:11051;background:#1b1f24;
       border:1px solid #444;border-radius:999px;padding:8px 12px;box-shadow:0 6px 16px #000a;
       color:#ddd;font-family:rs-pro-3;cursor:pointer;display:none;user-select:none}
+    .ah-small{font-size:11px; opacity:.8}
+    .nisbutton.slim{height:auto; line-height:1; font-size:12px; padding:4px 8px}
   `;
   document.head.appendChild(style);
 
@@ -127,12 +138,17 @@ let tickMs = 600; // default 0.6s display tick
     <div class="ah-row">
       <label for="ah-size">Overlay size</label>
       <input id="ah-size" type="range" min="0.25" max="2" step="0.05">
-      <span id="ah-size-val" style="width:40px;text-align:right;">1.0×</span>
+      <span id="ah-size-val" style="width:48px;text-align:right;">1.00×</span>
     </div>
     <div class="ah-row">
       <label for="ah-enable">Overlay</label>
       <input id="ah-enable" type="checkbox">
       <span id="ah-enable-state"></span>
+    </div>
+    <div class="ah-row">
+      <label>Position</label>
+      <button id="ah-set-pos" class="nisbutton slim">Set overlay position</button>
+      <span id="ah-pos-val" class="ah-small"></span>
     </div>
     <div class="ah-buttons" id="ah-extra-btns"></div>
   `;
@@ -183,6 +199,64 @@ let tickMs = 600; // default 0.6s display tick
     try { localStorage.setItem("amascut.overlayEnabled", String(overlayEnabled)); } catch {}
     refreshEnableText();
     if (!overlayEnabled) clearOverlayGroup();
+  });
+
+  // show current position
+  const posVal = panel.querySelector("#ah-pos-val");
+  const updatePosLabel = () => {
+    if (overlayPos) posVal.textContent = `(${overlayPos.x}, ${overlayPos.y})`;
+    else posVal.textContent = `(centered)`;
+  };
+  updatePosLabel();
+
+  // NEW: Set overlay position with Alt+1
+  const setPosBtn = panel.querySelector("#ah-set-pos");
+  let posMode = false;
+  let posKeyHandler = null;
+
+  function exitPosMode() {
+    if (!posMode) return;
+    posMode = false;
+    setPosBtn.textContent = "Set overlay position";
+    try { alt1 && alt1.clearTooltip && alt1.clearTooltip(); } catch {}
+    if (posKeyHandler) {
+      window.removeEventListener("keydown", posKeyHandler, true);
+      posKeyHandler = null;
+    }
+  }
+
+  function enterPosMode() {
+    if (posMode) return;
+    posMode = true;
+    setPosBtn.textContent = "Setting… (Alt+1)";
+    try { alt1 && alt1.setTooltip && alt1.setTooltip("Move cursor, press Alt+1 to save overlay position"); } catch {}
+
+    posKeyHandler = (e) => {
+      // Detect Alt+1
+      if (e.altKey && (e.key === "1" || e.code === "Digit1")) {
+        e.preventDefault();
+        try {
+          const mp = (window.a1lib && a1lib.getMousePosition && a1lib.getMousePosition()) || null;
+          if (mp && Number.isFinite(mp.x) && Number.isFinite(mp.y)) {
+            overlayPos = { x: Math.max(0, Math.floor(mp.x)), y: Math.max(0, Math.floor(mp.y)) };
+            localStorage.setItem("amascut.overlayPos", JSON.stringify(overlayPos));
+            updatePosLabel();
+            log(`📍 Overlay position set to ${overlayPos.x}, ${overlayPos.y}`);
+          } else {
+            log("⚠️ Could not read mouse position from a1lib.");
+          }
+        } catch (err) {
+          console.error(err);
+          log("⚠️ Error while setting overlay position.");
+        }
+        exitPosMode();
+      }
+    };
+    window.addEventListener("keydown", posKeyHandler, true);
+  }
+
+  setPosBtn.addEventListener("click", () => {
+    if (posMode) exitPosMode(); else enterPosMode();
   });
 
   // move existing buttons into panel
@@ -636,6 +710,14 @@ function centerFor(canvas) {
   };
 }
 
+/* NEW: choose position (custom top-left if set, else center) */
+function positionFor(canvas) {
+  if (overlayPos && Number.isFinite(overlayPos.x) && Number.isFinite(overlayPos.y)) {
+    return { x: Math.max(0, Math.floor(overlayPos.x)), y: Math.max(0, Math.floor(overlayPos.y)) };
+  }
+  return centerFor(canvas);
+}
+
 function clearOverlayGroup() {
   try {
     alt1.overLaySetGroup(overlayCtl.group);
@@ -746,7 +828,7 @@ async function updateOverlayOnce() {
     const canvas = renderLinesToCanvas(lines);
     const ctx = canvas.getContext("2d");
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pos = centerFor(canvas);
+    const pos = positionFor(canvas); // <-- use custom position if set
 
     if (img && img.width > 0 && img.height > 0) {
       alt1.overLaySetGroup(overlayCtl.group);
