@@ -488,6 +488,9 @@ setTimeout(() => {
         log("✅ chatbox found");
         showSelected(reader.pos);
         setInterval(readChatbox, 250);
+
+        // [ADDED] start overlay when ready
+        try { startOverlay(); } catch (e) { console.error(e); }
       }
     } catch (e) {
       log("⚠️ " + (e?.message || e));
@@ -500,4 +503,139 @@ function showSelected(pos) {
     const b = pos.mainbox.rect;
     alt1.overLayRect(A1lib.mixColor(0, 255, 0), b.x, b.y, b.width, b.height, 2000, 4);
   } catch {}
+}
+
+// Lazily load html2canvas for element -> canvas capture
+async function ensureCaptureLib() {
+  if (window.html2canvas) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+    s.crossOrigin = "anonymous";
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("Failed to load html2canvas"));
+    document.head.appendChild(s);
+  });
+}
+
+// Element -> Canvas (transparent)
+async function toCanvas(el, opts = {}) {
+  await ensureCaptureLib();
+  const scale = Math.max(0.5, window.devicePixelRatio || 1);
+  const canvas = await window.html2canvas(el, {
+    backgroundColor: null,
+    scale,
+    logging: false,
+    useCORS: true,
+    ...opts,
+  });
+  return canvas;
+}
+
+// Alt1 overlay controller
+const overlayCtl = {
+  group: "amascOverlayRegion",
+  raf: 0,
+  timer: 0,
+  refreshRate: 50,
+  running: false,
+};
+
+function getRsClientSize() {
+  try {
+    const w = (alt1 && alt1.rsWidth) ? alt1.rsWidth : 800;
+    const h = (alt1 && alt1.rsHeight) ? alt1.rsHeight : 600;
+    return { w, h };
+  } catch { return { w: 800, h: 600 }; }
+}
+
+function centerFor(canvas) {
+  const { w: rw, h: rh } = getRsClientSize();
+  return {
+    x: Math.max(0, Math.round((rw - canvas.width) / 2)),
+    y: Math.max(0, Math.round((rh - canvas.height) / 2)),
+  };
+}
+
+function clearOverlayGroup() {
+  try {
+    alt1.overLaySetGroup(overlayCtl.group);
+    alt1.overLayFreezeGroup(overlayCtl.group);
+    alt1.overLayClearGroup(overlayCtl.group);
+    alt1.overLayRefreshGroup(overlayCtl.group);
+  } catch {}
+}
+
+function scheduleNext(cb) {
+  overlayCtl.timer = window.setTimeout(() => {
+    overlayCtl.raf = window.requestAnimationFrame(cb);
+  }, overlayCtl.refreshRate);
+}
+
+// helper: a1lib/A1lib encoder (handles either global)
+function encodeImage(imgData) {
+  const enc = (window.a1lib && a1lib.encodeImageString) || (window.A1lib && A1lib.encodeImageString);
+  if (!enc) throw new Error("encodeImageString not found on a1lib/A1lib");
+  return enc(imgData);
+}
+
+async function updateOverlayOnce() {
+  try {
+    if (!window.alt1) { scheduleNext(updateOverlayOnce); return; }
+
+    const el = document.getElementById("spec");
+    if (!el) {
+      clearOverlayGroup();
+      scheduleNext(updateOverlayOnce);
+      return;
+    }
+
+    const prevBg = el.style.background;
+    el.style.background = "transparent";
+
+    const canvas = await toCanvas(el);
+    const ctx = canvas.getContext("2d");
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const pos = centerFor(canvas);
+
+    if (img && img.width > 0 && img.height > 0) {
+      alt1.overLaySetGroup(overlayCtl.group);
+      alt1.overLayFreezeGroup(overlayCtl.group);
+      alt1.overLayClearGroup(overlayCtl.group);
+      alt1.overLayImage(
+        pos.x,
+        pos.y,
+        encodeImage(img),
+        img.width,
+        overlayCtl.refreshRate
+      );
+      alt1.overLayRefreshGroup(overlayCtl.group);
+    } else {
+      clearOverlayGroup();
+    }
+
+    el.style.background = prevBg;
+  } catch (e) {
+    console.error(e);
+    clearOverlayGroup();
+  } finally {
+    if (overlayCtl.running) scheduleNext(updateOverlayOnce);
+  }
+}
+
+function startOverlay(opts = {}) {
+  overlayCtl.refreshRate = Number(opts.refreshRate) || 50;
+  if (overlayCtl.running) return;
+  overlayCtl.running = true;
+  clearOverlayGroup();
+  scheduleNext(updateOverlayOnce);
+}
+
+function stopOverlay() {
+  overlayCtl.running = false;
+  try { if (overlayCtl.raf) cancelAnimationFrame(overlayCtl.raf); } catch {}
+  try { if (overlayCtl.timer) clearTimeout(overlayCtl.timer); } catch {}
+  overlayCtl.raf = 0;
+  overlayCtl.timer = 0;
+  clearOverlayGroup();
 }
