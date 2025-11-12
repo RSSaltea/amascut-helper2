@@ -31,7 +31,7 @@ let activeTimeouts = [];  // holds timeouts for special timers so we can cancel 
    Global overlay preferences
    ========================= */
 let overlayScale = Number(localStorage.getItem("amascut.overlayScale") || "1");
-if (!(overlayScale >= 0.5 && overlayScale <= 2.0)) overlayScale = 1;
+if (!(overlayScale >= 0.25 && overlayScale <= 2.0)) overlayScale = 1;
 let overlayEnabled = (localStorage.getItem("amascut.overlayEnabled") ?? "true") === "true";
 
 /* ---------- Logs toggle ---------- */
@@ -126,7 +126,7 @@ let tickMs = 600; // default 0.6s display tick
     </h4>
     <div class="ah-row">
       <label for="ah-size">Overlay size</label>
-      <input id="ah-size" type="range" min="0.5" max="2" step="0.05">
+      <input id="ah-size" type="range" min="0.25" max="2" step="0.05">
       <span id="ah-size-val" style="width:40px;text-align:right;">1.0×</span>
     </div>
     <div class="ah-row">
