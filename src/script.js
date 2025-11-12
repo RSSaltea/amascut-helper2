@@ -23,9 +23,9 @@ const seenLineIds = new Set();
 const seenLineQueue = [];
 
 let resetTimerId = null;
-let lastDisplayAt = 0; // for 10s window used by generic showMessage/updateUI
-let activeIntervals = []; // holds intervals for special timers so we can cancel them
-let activeTimeouts = [];  // holds timeouts for special timers so we can cancel them
+let lastDisplayAt = 0;
+let activeIntervals = [];
+let activeTimeouts = [];
 
 /* =========================
    Global overlay preferences
@@ -48,7 +48,7 @@ try {
   const style = document.createElement("style");
   style.textContent = `
     .ah-logs-toggle{position:fixed;top:6px;right:8px;z-index:11000;font-size:12px;opacity:.85;background:#222;
-      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 8px;line-height:1;}
+      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 8px;line-height:1;color:#fff}
     .ah-logs-toggle:hover{opacity:1}
     .logs-hidden #output{display:none !important}
   `;
@@ -74,13 +74,13 @@ try {
 })();
 
 /* ==== Tick configuration & toggle ==== */
-let tickMs = 600; // default 0.6s display tick
+let tickMs = 600;
 
 (function injectTickToggle(){
   const style = document.createElement("style");
   style.textContent = `
     .ah-tick-toggle{position:fixed;top:6px;left:8px;z-index:11000;font-size:12px;opacity:.85;background:#222;
-      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 8px;line-height:1;margin-right:6px;}
+      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 8px;line-height:1;margin-right:6px;color:#fff}
     .ah-tick-toggle:hover{opacity:1}
   `;
   document.head.appendChild(style);
@@ -103,9 +103,10 @@ let tickMs = 600; // default 0.6s display tick
     }
   });
 })();
-/* ============================================ */
 
-/* ===== Options panel (bottom-right) + minimise button ===== */
+/* ===== Options panel (bottom-right) + minimise button + Set pos ===== */
+let posMode = false;           // NEW: positioning mode flag
+let posRaf = 0;                // NEW: RAF handle for mouse-follow
 (function injectOptionsPanel(){
   const style = document.createElement("style");
   style.textContent = `
@@ -124,6 +125,7 @@ let tickMs = 600; // default 0.6s display tick
       border:1px solid #444;border-radius:999px;padding:8px 12px;box-shadow:0 6px 16px #000a;
       color:#ddd;font-family:rs-pro-3;cursor:pointer;display:none;user-select:none}
     .ah-small{font-size:11px; opacity:.8}
+    .ah-simple-btn{border:1px solid #444;background:#222;border-radius:4px;cursor:pointer}
   `;
   document.head.appendChild(style);
 
@@ -149,14 +151,12 @@ let tickMs = 600; // default 0.6s display tick
   `;
   document.body.appendChild(panel);
 
-  // mini restore button (shown when panel minimised)
   const mini = document.createElement("div");
   mini.className = "ah-mini";
   mini.id = "ah-panel-mini";
   mini.textContent = "⚙";
   document.body.appendChild(mini);
 
-  // persist minimise state
   let panelMin = (localStorage.getItem("amascut.panelMin") ?? "false") === "true";
   function setPanelMin(min){
     panelMin = !!min;
@@ -164,15 +164,10 @@ let tickMs = 600; // default 0.6s display tick
     mini.style.display = panelMin ? "block" : "none";
     try { localStorage.setItem("amascut.panelMin", String(panelMin)); } catch {}
   }
-
-  // header minimise button
   panel.querySelector("#ah-panel-min").addEventListener("click", () => setPanelMin(true));
-  // mini restore click
   mini.addEventListener("click", () => setPanelMin(false));
-  // initialise
   setPanelMin(panelMin);
 
-  // wire size
   const size = panel.querySelector("#ah-size");
   const sizeVal = panel.querySelector("#ah-size-val");
   size.value = String(overlayScale);
@@ -183,7 +178,6 @@ let tickMs = 600; // default 0.6s display tick
     try { localStorage.setItem("amascut.overlayScale", String(overlayScale)); } catch {}
   });
 
-  // wire enable
   const cb = panel.querySelector("#ah-enable");
   const state = panel.querySelector("#ah-enable-state");
   const refreshEnableText = () => state.textContent = overlayEnabled ? "On" : "Off";
@@ -196,7 +190,6 @@ let tickMs = 600; // default 0.6s display tick
     if (!overlayEnabled) clearOverlayGroup();
   });
 
-  // show current position label
   const posVal = panel.querySelector("#ah-pos-val");
   const updatePosLabel = () => {
     if (overlayPos) posVal.textContent = `Position: (${overlayPos.x}, ${overlayPos.y})`;
@@ -204,7 +197,6 @@ let tickMs = 600; // default 0.6s display tick
   };
   updatePosLabel();
 
-  // move existing buttons into panel
   const extra = panel.querySelector("#ah-extra-btns");
   const tickBtn = document.getElementById("ah-tick-toggle");
   const logsBtn = document.getElementById("ah-logs-toggle");
@@ -215,18 +207,12 @@ let tickMs = 600; // default 0.6s display tick
     extra.appendChild(btn);
   });
 
-  // === NEW: Set position mini control (starts pos mode; finish with Alt+1) ===
+  /* NEW: “Set pos” mini button (starts pos mode; save with Alt+1) */
   const setPos = document.createElement("button");
   setPos.textContent = "Set pos";
-  setPos.style.border = "1px solid #444";
-  setPos.style.background = "#222";
-  setPos.style.borderRadius = "4px";
-  setPos.style.cursor = "pointer";
+  setPos.className = "ah-simple-btn";
   setPos.style.color = "#fff";
   extra.appendChild(setPos);
-
-  let posMode = false;
-  let posRaf = 0;
 
   function stopPosMode(saveNow = false){
     posMode = false;
@@ -243,11 +229,13 @@ let tickMs = 600; // default 0.6s display tick
   function startPosMode(){
     if (posMode) return;
     posMode = true;
-    setPos.textContent = "Setting… (Alt+1 to save)";
-    try { alt1 && alt1.setTooltip && alt1.setTooltip("Move cursor to where you want the overlay, press Alt+1 to save."); } catch {}
+    setPos.textContent = "Setting… (Alt+1)";
+    try { alt1 && alt1.setTooltip && alt1.setTooltip("Press Alt+1 to save overlay position"); } catch {}
     const step = () => {
       if (!posMode) return;
-      const mp = (window.a1lib && a1lib.getMousePosition && a1lib.getMousePosition()) || null;
+      const mp =
+        (window.a1lib && a1lib.getMousePosition && a1lib.getMousePosition()) ||
+        null;
       if (mp && Number.isFinite(mp.x) && Number.isFinite(mp.y)) {
         overlayPos = { x: Math.max(0, Math.floor(mp.x)), y: Math.max(0, Math.floor(mp.y)) };
       }
@@ -256,23 +244,29 @@ let tickMs = 600; // default 0.6s display tick
     posRaf = requestAnimationFrame(step);
   }
 
-  // click to start/cancel positioning
   setPos.addEventListener("click", () => {
     if (posMode) { stopPosMode(false); } else { startPosMode(); }
   });
 
-  // === NEW: Alt1 global hotkey — fires even with RS focused ===
+  /* NEW: Alt1 global hotkey — triggers when the Alt+1 hotkey is pressed */
   try {
-    if (window.a1lib && a1lib.on) {
+    if (window.a1lib && typeof a1lib.on === "function") {
       a1lib.on("alt1pressed", () => {
-        if (posMode) stopPosMode(true); // save & exit on Alt+1
+        if (posMode) stopPosMode(true);
       });
     }
-  } catch (e) {
-    console.error("Failed binding alt1pressed:", e);
-  }
+  } catch (e) { console.error("Failed binding alt1pressed:", e); }
+
+  /* Fallback (won’t fire when RS has focus, but useful in debugging) */
+  window.addEventListener("keydown", (e) => {
+    if (posMode && e.altKey && (e.code === "Digit1" || e.key === "1")) {
+      e.preventDefault();
+      stopPosMode(true);
+    }
+  });
 })();
-/* ======================================== */
+
+/* ====== helpers/timers/UI (unchanged) ====== */
 
 function clearActiveTimers() {
   activeIntervals.forEach(clearInterval);
@@ -414,7 +408,6 @@ function firstNonWhiteColor(seg) {
   return null;
 }
 
-/* Helpers to ensure rows are visible and to print on fixed rows */
 function setRow(i, text) {
   const rows = document.querySelectorAll("#spec tr");
   if (!rows[i]) return;
@@ -432,30 +425,26 @@ function clearRow(i) {
   rows[i].classList.remove("selected", "callout", "flash", "role-range", "role-magic", "role-melee");
 }
 
-/* format with one decimal (e.g., 14.4 → 14.4, 0.05 → 0.0) */
 function fmt(x) { return Math.max(0, x).toFixed(1); }
 
 let snuffStartAt = 0;
 
-/* ==== Added: shared interval builder for snuffed timers ==== */
 function makeSnuffedInterval() {
   const iv = setInterval(() => {
     const elapsed = (Date.now() - snuffStartAt) / 1000;
 
-    // --- Swap (14.4s one-shot) ---
     const swapRemaining = 14.4 - elapsed;
     if (swapRemaining <= 0) {
       if (!startSnuffedTimers._swapFrozen) {
         setRow(0, "Swap side: 0.0s");
-        startSnuffedTimers._swapFrozen = true; // no further updates
-        const t = setTimeout(() => { clearRow(0); }, 5000); // stay visible 5s, then remove
+        startSnuffedTimers._swapFrozen = true;
+        const t = setTimeout(() => { clearRow(0); }, 5000);
         activeTimeouts.push(t);
       }
     } else if (!startSnuffedTimers._swapFrozen) {
       setRow(0, `Swap side: ${fmt(swapRemaining)}s`);
     }
 
-    // --- Click-in (9.0s repeating) ---
     const period = 9.0;
     let clickRemaining = period - (elapsed % period);
     if (clickRemaining >= period - 1e-6) clickRemaining = 0;
@@ -465,7 +454,6 @@ function makeSnuffedInterval() {
   activeIntervals.push(iv);
   return iv;
 }
-/* ========================================================== */
 
 function startSnuffedTimers() {
   clearActiveTimers();
@@ -503,20 +491,15 @@ function stopSnuffedTimersAndReset() {
 let lastSig = "";
 let lastAt = 0;
 
-/* ==== Added: colored, auto-clearing solo messages ==== */
 function showSolo(role, cls) {
   const rows = document.querySelectorAll("#spec tr");
   if (!rows.length) return;
-
-  // clear all rows
   for (let i = 0; i < rows.length; i++) {
     rows[i].classList.remove("role-range","role-magic","role-melee","callout","flash","selected");
     const c = rows[i].querySelector("td");
     if (c) c.textContent = "";
     rows[i].style.display = "none";
   }
-
-  // show on row 0 with color
   const row = rows[0];
   if (row) {
     const cell = row.querySelector("td");
@@ -524,17 +507,11 @@ function showSolo(role, cls) {
     row.style.display = "table-row";
     row.classList.add("selected","callout","flash",cls);
   }
-
-  // remove after 4 seconds
   const t = setTimeout(() => { clearRow(0); }, 4000);
   activeTimeouts.push(t);
 }
-/* ======================================================= */
 
 function onAmascutLine(full, lineId) {
-  // (remove the early seenLineIds block here)
-
-  // Hard reset on session message
   if (/welcome to your session/i.test(full)) {
     log("🔄 Session welcome detected — full reset");
     stopSnuffedTimersAndReset();
@@ -561,7 +538,6 @@ function onAmascutLine(full, lineId) {
   else if (/Scabaras\.\.\.(?!\s*Het\.\.\.\s*Bear witness!?)/i.test(raw)) key = "scabaras";
   if (!key) return;
 
-  // Only dedupe with seenLineIds for NON-snuffed lines
   if (key !== "snuffed" && lineId) {
     if (seenLineIds.has(lineId)) return;
     seenLineIds.add(lineId);
@@ -610,13 +586,12 @@ function onAmascutLine(full, lineId) {
   } else if (key === "scabaras") {
     showMessage("Scabaras (NE)");
   } else if (key === "soloWeakMagic") {
-    showSolo("Magic", "role-magic");   // blue
+    showSolo("Magic", "role-magic");
   } else if (key === "soloMelee") {
-    showSolo("Melee", "role-melee");   // red
+    showSolo("Melee", "role-melee");
   } else if (key === "soloRange") {
-    showSolo("Range", "role-range");   // green
+    showSolo("Range", "role-range");
   } else {
-    // weak / grovel / pathetic — same behavior
     updateUI(key);
   }
 }
@@ -671,7 +646,6 @@ setTimeout(() => {
         showSelected(reader.pos);
         setInterval(readChatbox, 250);
 
-        // start overlay when ready
         try { startOverlay(); } catch (e) { console.error(e); }
       }
     } catch (e) {
@@ -712,11 +686,11 @@ function centerFor(canvas) {
   };
 }
 
-/* Choose position (custom top-left if set, else center) */
+/* Use saved position if available; otherwise center */
 function positionFor(canvas) {
   if (overlayPos && Number.isFinite(overlayPos.x) && Number.isFinite(overlayPos.y)) {
     return { x: Math.max(0, Math.floor(overlayPos.x)), y: Math.max(0, Math.floor(overlayPos.y)) };
-    }
+  }
   return centerFor(canvas);
 }
 
@@ -735,7 +709,6 @@ function scheduleNext(cb) {
   }, overlayCtl.refreshRate);
 }
 
-// helper: a1lib/A1lib encoder (handles either global)
 function encodeImage(imgData) {
   const enc = (window.a1lib && a1lib.encodeImageString) || (window.A1lib && A1lib.encodeImageString);
   if (!enc) throw new Error("encodeImageString not found on a1lib/A1lib");
@@ -746,6 +719,13 @@ function encodeImage(imgData) {
 function gatherSpecLines() {
   const rows = document.querySelectorAll("#spec tr");
   const lines = [];
+
+  // While positioning, force a visible label so you can see it move
+  if (posMode) {
+    lines.push({ text: "Positioning…", color: "#FFFFFF" });
+    return lines;
+  }
+
   rows.forEach((row) => {
     if (row.style.display === "none") return;
     const td = row.querySelector("td");
@@ -753,9 +733,9 @@ function gatherSpecLines() {
     if (!text) return;
 
     let color = "#FFFFFF";
-    if (row.classList.contains("role-range")) color = "#1fb34f"; // green
-    else if (row.classList.contains("role-magic")) color = "#3a67ff"; // blue
-    else if (row.classList.contains("role-melee")) color = "#e13b3b"; // red
+    if (row.classList.contains("role-range")) color = "#1fb34f";
+    else if (row.classList.contains("role-magic")) color = "#3a67ff";
+    else if (row.classList.contains("role-melee")) color = "#e13b3b";
 
     lines.push({ text, color });
   });
@@ -764,13 +744,11 @@ function gatherSpecLines() {
 
 function renderLinesToCanvas(lines) {
   const { w: rw } = getRsClientSize();
-  // scale influenced by panel slider
   const baseSize = Math.round(Math.min(64, Math.max(28, rw * 0.045)));
   const fontSize = Math.max(14, Math.round(baseSize * overlayScale));
   const pad = 12;
   const gap = 6;
 
-  // measure
   const m = document.createElement("canvas");
   const mctx = m.getContext("2d");
   mctx.font = `bold ${fontSize}px system-ui, -apple-system, Segoe UI, Arial, sans-serif`;
@@ -796,25 +774,21 @@ function renderLinesToCanvas(lines) {
   let y = pad;
   for (const { text, color } of lines) {
     const x = pad;
-
     ctx.lineWidth = outline;
     ctx.strokeStyle = "rgba(0,0,0,0.85)";
     ctx.strokeText(text, x, y);
-
     ctx.fillStyle = color;
     ctx.fillText(text, x, y);
-
     y += lineH;
   }
   return c;
 }
-/* ================================================================= */
 
 async function updateOverlayOnce() {
   try {
     if (!window.alt1) { scheduleNext(updateOverlayOnce); return; }
 
-    if (!overlayEnabled) { // obey panel toggle
+    if (!overlayEnabled) {
       clearOverlayGroup();
       scheduleNext(updateOverlayOnce);
       return;
@@ -830,7 +804,7 @@ async function updateOverlayOnce() {
     const canvas = renderLinesToCanvas(lines);
     const ctx = canvas.getContext("2d");
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pos = positionFor(canvas); // <-- use custom position if set
+    const pos = positionFor(canvas);
 
     if (img && img.width > 0 && img.height > 0) {
       alt1.overLaySetGroup(overlayCtl.group);
