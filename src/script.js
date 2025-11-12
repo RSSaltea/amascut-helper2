@@ -27,6 +27,14 @@ let lastDisplayAt = 0; // for 10s window used by generic showMessage/updateUI
 let activeIntervals = []; // holds intervals for special timers so we can cancel them
 let activeTimeouts = [];  // holds timeouts for special timers so we can cancel them
 
+/* =========================
+   Global overlay preferences
+   ========================= */
+let overlayScale = Number(localStorage.getItem("amascut.overlayScale") || "1");
+if (!(overlayScale >= 0.5 && overlayScale <= 2.0)) overlayScale = 1;
+let overlayEnabled = (localStorage.getItem("amascut.overlayEnabled") ?? "true") === "true";
+
+/* ---------- Logs toggle ---------- */
 (function injectLogsToggle(){
   const style = document.createElement("style");
   style.textContent = `
@@ -56,7 +64,7 @@ let activeTimeouts = [];  // holds timeouts for special timers so we can cancel 
   });
 })();
 
-/* ==== Added: tick configuration & toggle ==== */
+/* ==== Tick configuration & toggle ==== */
 let tickMs = 600; // default 0.6s display tick
 
 (function injectTickToggle(){
@@ -80,8 +88,6 @@ let tickMs = 600; // default 0.6s display tick
     tickMs = (tickMs === 600) ? 100 : 600;
     btn.textContent = `Tick/ms: ${tickMs}`;
     try { localStorage.setItem("amascut.tickMs", String(tickMs)); } catch {}
-
-    // rebuild running interval with new tick without resetting anchors
     if (startSnuffedTimers._iv) {
       try { clearInterval(startSnuffedTimers._iv); } catch {}
       startSnuffedTimers._iv = makeSnuffedInterval();
@@ -89,6 +95,77 @@ let tickMs = 600; // default 0.6s display tick
   });
 })();
 /* ============================================ */
+
+/* ===== Options panel (bottom-right) ===== */
+(function injectOptionsPanel(){
+  const style = document.createElement("style");
+  style.textContent = `
+    .ah-panel{position:fixed;right:12px;bottom:12px;z-index:11050;min-width:240px;
+      background:#1b1f24cc;border:1px solid #444;border-radius:8px;padding:10px;
+      box-shadow:0 6px 16px #000a;font-family:rs-pro-3;color:#ddd}
+    .ah-panel h4{margin:0 0 8px 0;font-size:14px;color:#fff}
+    .ah-row{display:flex;align-items:center;gap:8px;margin:6px 0}
+    .ah-row label{font-size:12px;min-width:90px}
+    .ah-row input[type="range"]{flex:1}
+    .ah-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+    .ah-buttons > *{position:static !important; font-size:12px; line-height:1; padding:4px 8px; margin:0}
+  `;
+  document.head.appendChild(style);
+
+  const panel = document.createElement("div");
+  panel.className = "ah-panel";
+  panel.innerHTML = `
+    <h4>Amascut Helper – Options</h4>
+    <div class="ah-row">
+      <label for="ah-size">Overlay size</label>
+      <input id="ah-size" type="range" min="0.5" max="2" step="0.05">
+      <span id="ah-size-val" style="width:40px;text-align:right;">1.0×</span>
+    </div>
+    <div class="ah-row">
+      <label for="ah-enable">Overlay</label>
+      <input id="ah-enable" type="checkbox">
+      <span id="ah-enable-state"></span>
+    </div>
+    <div class="ah-buttons" id="ah-extra-btns"></div>
+  `;
+  document.body.appendChild(panel);
+
+  // wire size
+  const size = panel.querySelector("#ah-size");
+  const sizeVal = panel.querySelector("#ah-size-val");
+  size.value = String(overlayScale);
+  sizeVal.textContent = `${Number(overlayScale).toFixed(2)}×`;
+  size.addEventListener("input", () => {
+    overlayScale = Number(size.value);
+    sizeVal.textContent = `${overlayScale.toFixed(2)}×`;
+    try { localStorage.setItem("amascut.overlayScale", String(overlayScale)); } catch {}
+  });
+
+  // wire enable
+  const cb = panel.querySelector("#ah-enable");
+  const state = panel.querySelector("#ah-enable-state");
+  const refreshEnableText = () => state.textContent = overlayEnabled ? "On" : "Off";
+  cb.checked = overlayEnabled;
+  refreshEnableText();
+  cb.addEventListener("change", () => {
+    overlayEnabled = cb.checked;
+    try { localStorage.setItem("amascut.overlayEnabled", String(overlayEnabled)); } catch {}
+    refreshEnableText();
+    if (!overlayEnabled) clearOverlayGroup();
+  });
+
+  // move existing buttons into panel
+  const extra = panel.querySelector("#ah-extra-btns");
+  const tickBtn = document.getElementById("ah-tick-toggle");
+  const logsBtn = document.getElementById("ah-logs-toggle");
+  [tickBtn, logsBtn].forEach(btn => {
+    if (!btn) return;
+    btn.style.position = "static";
+    btn.style.margin = "0";
+    extra.appendChild(btn);
+  });
+})();
+/* ======================================== */
 
 function clearActiveTimers() {
   activeIntervals.forEach(clearInterval);
@@ -487,7 +564,7 @@ setTimeout(() => {
         showSelected(reader.pos);
         setInterval(readChatbox, 250);
 
-        // [ADDED] start overlay when ready
+        // start overlay when ready
         try { startOverlay(); } catch (e) { console.error(e); }
       }
     } catch (e) {
@@ -502,11 +579,6 @@ function showSelected(pos) {
     alt1.overLayRect(A1lib.mixColor(0, 255, 0), b.x, b.y, b.width, b.height, 2000, 4);
   } catch {}
 }
-
-/* ===================== REMOVED (html2canvas capture) ===================== */
-/* ensureCaptureLib / toCanvas functions were removed — we no longer render
-   the DOM table; we draw bold text into an off-screen canvas instead. */
-/* ======================================================================== */
 
 /* ===== Alt1 overlay controller ===== */
 const overlayCtl = {
@@ -555,7 +627,7 @@ function encodeImage(imgData) {
   return enc(imgData);
 }
 
-/* ==================== ADDED: text-only overlay ==================== */
+/* ==================== Text-only overlay ==================== */
 function gatherSpecLines() {
   const rows = document.querySelectorAll("#spec tr");
   const lines = [];
@@ -565,7 +637,6 @@ function gatherSpecLines() {
     const text = (td?.textContent || "").trim();
     if (!text) return;
 
-    // Map role classes to colors (tweak if you like)
     let color = "#FFFFFF";
     if (row.classList.contains("role-range")) color = "#1fb34f"; // green
     else if (row.classList.contains("role-magic")) color = "#3a67ff"; // blue
@@ -578,7 +649,9 @@ function gatherSpecLines() {
 
 function renderLinesToCanvas(lines) {
   const { w: rw } = getRsClientSize();
-  const fontSize = Math.round(Math.min(64, Math.max(28, rw * 0.045)));
+  // scale influenced by panel slider
+  const baseSize = Math.round(Math.min(64, Math.max(28, rw * 0.045)));
+  const fontSize = Math.max(14, Math.round(baseSize * overlayScale));
   const pad = 12;
   const gap = 6;
 
@@ -610,7 +683,7 @@ function renderLinesToCanvas(lines) {
     const x = pad;
 
     ctx.lineWidth = outline;
-    ctx.strokeStyle = "rgba(0,0,0,0.85)"; // outline for readability
+    ctx.strokeStyle = "rgba(0,0,0,0.85)";
     ctx.strokeText(text, x, y);
 
     ctx.fillStyle = color;
@@ -626,7 +699,12 @@ async function updateOverlayOnce() {
   try {
     if (!window.alt1) { scheduleNext(updateOverlayOnce); return; }
 
-    // build an image containing ONLY the visible lines as bold text
+    if (!overlayEnabled) { // obey panel toggle
+      clearOverlayGroup();
+      scheduleNext(updateOverlayOnce);
+      return;
+    }
+
     const lines = gatherSpecLines();
     if (!lines.length) {
       clearOverlayGroup();
