@@ -142,7 +142,7 @@ let tickMs = 600; // default 0.6s display tick
   const mini = document.createElement("div");
   mini.className = "ah-mini";
   mini.id = "ah-panel-mini";
-  mini.textContent = "AH ⚙";
+  mini.textContent = "⚙";
   document.body.appendChild(mini);
 
   // persist minimise state
