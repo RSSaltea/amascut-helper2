@@ -503,11 +503,6 @@ function showSelected(pos) {
   } catch {}
 }
 
-/* ===================== REMOVED (html2canvas capture) ===================== */
-/* ensureCaptureLib / toCanvas functions were removed — we no longer render
-   the DOM table; we draw bold text into an off-screen canvas instead. */
-/* ======================================================================== */
-
 /* ===== Alt1 overlay controller ===== */
 const overlayCtl = {
   group: "amascOverlayRegion",
@@ -555,7 +550,7 @@ function encodeImage(imgData) {
   return enc(imgData);
 }
 
-/* ==================== ADDED: text-only overlay ==================== */
+/* ==================== Text-only overlay (unchanged except for Waiting filter) ==================== */
 function gatherSpecLines() {
   const rows = document.querySelectorAll("#spec tr");
   const lines = [];
@@ -563,7 +558,8 @@ function gatherSpecLines() {
     if (row.style.display === "none") return;
     const td = row.querySelector("td");
     const text = (td?.textContent || "").trim();
-    if (!text) return;
+    // >>> Filter out "Waiting..." so overlay stays hidden until a voice line fires
+    if (!text || /^waiting\.{0,3}$/i.test(text)) return;
 
     // Map role classes to colors (tweak if you like)
     let color = "#FFFFFF";
