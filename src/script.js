@@ -451,41 +451,60 @@ function fmt(x) { return Math.max(0, x).toFixed(1); }
 
 let snuffStartAt = 0;
 
+/* ==== Barricade timer state ==== */
 let barricadeStartAt = 0;
+let barricadeIv = 0;
+let barricadeClearT = 0;
+
+function stopBarricadeTimer(clearRowToo = true) {
+  if (barricadeIv) {
+    try { clearInterval(barricadeIv); } catch {}
+    barricadeIv = 0;
+  }
+  if (barricadeClearT) {
+    try { clearTimeout(barricadeClearT); } catch {}
+    barricadeClearT = 0;
+  }
+  barricadeStartAt = 0;
+  if (clearRowToo) clearRow(2);   // row 2 used for Barricade
+}
 
 function startBarricadeTimer() {
+  // cancel any existing Barricade timer, but keep row visible (we overwrite text)
+  stopBarricadeTimer(false);
+
   barricadeStartAt = Date.now();
 
-  // cancel an existing barricade interval if it's running
-  if (startBarricadeTimer._iv) {
-    try { clearInterval(startBarricadeTimer._iv); } catch {}
-    startBarricadeTimer._iv = null;
-  }
-
-  // start at 13.0s on row 2
+  // initial display at 13.0s on row 2
   setRow(2, "Barricade: 13.0s");
 
-  const iv = setInterval(() => {
-    const elapsed = (Date.now() - barricadeStartAt) / 1000;
+  barricadeIv = setInterval(() => {
+    const elapsed   = (Date.now() - barricadeStartAt) / 1000;
     const remaining = 13 - elapsed;
 
     if (remaining <= 0) {
-      // freeze at 0.0 then clear after 5s
+      // freeze at 0.0, then schedule clear in 5s
       setRow(2, "Barricade: 0.0s");
-      try { clearInterval(iv); } catch {}
-      startBarricadeTimer._iv = null;
 
-      const t = setTimeout(() => { clearRow(2); }, 5000);
-      activeTimeouts.push(t);
+      try { clearInterval(barricadeIv); } catch {}
+      barricadeIv = 0;
+
+      if (barricadeClearT) {
+        try { clearTimeout(barricadeClearT); } catch {}
+      }
+
+      barricadeClearT = setTimeout(() => {
+        clearRow(2);
+        barricadeClearT = 0;
+      }, 5000);
+
       return;
     }
 
     setRow(2, `Barricade: ${fmt(remaining)}s`);
   }, tickMs);
-
-  startBarricadeTimer._iv = iv;
-  activeIntervals.push(iv);
 }
+/* =============================== */
 
 /* ==== Added: shared interval builder for snuffed timers ==== */
 function makeSnuffedInterval() {
@@ -545,12 +564,9 @@ function stopSnuffedTimersAndReset() {
 
   snuffStartAt = 0;
 
-  barricadeStartAt = 0;
-  if (startBarricadeTimer._iv) {
-    try { clearInterval(startBarricadeTimer._iv); } catch {}
-    startBarricadeTimer._iv = null;
-  }
-  
+  // also fully stop Barricade timer
+  stopBarricadeTimer(true);
+
   lastDisplayAt = 0;
   [0, 1, 2].forEach(clearRow);
   resetUI();
@@ -588,8 +604,6 @@ function showSolo(role, cls) {
 /* ======================================================= */
 
 function onAmascutLine(full, lineId) {
-  // (remove the early seenLineIds block here)
-
   // Hard reset on session message
   if (/welcome to your session/i.test(full)) {
     log("🔄 Session welcome detected — full reset");
@@ -679,7 +693,6 @@ function onAmascutLine(full, lineId) {
     // weak / grovel / pathetic — same behavior
     updateUI(key);
   }
-
 }
 
 function readChatbox() {
