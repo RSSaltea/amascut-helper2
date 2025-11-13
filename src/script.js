@@ -312,7 +312,7 @@ function resetUI() {
 
   if (rows[0]) {
     const c0 = rows[0].querySelector("td");
-    if (c0) c0.textContent = "Waiting...";
+    if (c0) c0.textContent = " ";
     rows[0].style.display = "";
     rows[0].classList.remove("role-range", "role-magic", "role-melee", "callout", "flash");
     rows[0].classList.add("selected");
@@ -773,9 +773,6 @@ function gatherSpecLines() {
     const text = (td?.textContent || "").trim();
     if (!text) return;
 
-    // 🔕 Don't draw "Waiting..." on the overlay
-    if (text === "Waiting...") return;
-
     let color = "#FFFFFF";
     if (row.classList.contains("role-range")) color = "#1fb34f"; // green
     else if (row.classList.contains("role-magic")) color = "#3a67ff"; // blue
@@ -785,6 +782,7 @@ function gatherSpecLines() {
   });
   return lines;
 }
+
 
 function renderLinesToCanvas(lines) {
   const { w: rw } = getRsClientSize();
