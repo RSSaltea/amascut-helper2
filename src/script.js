@@ -451,6 +451,42 @@ function fmt(x) { return Math.max(0, x).toFixed(1); }
 
 let snuffStartAt = 0;
 
+let barricadeStartAt = 0;
+
+function startBarricadeTimer() {
+  barricadeStartAt = Date.now();
+
+  // cancel an existing barricade interval if it's running
+  if (startBarricadeTimer._iv) {
+    try { clearInterval(startBarricadeTimer._iv); } catch {}
+    startBarricadeTimer._iv = null;
+  }
+
+  // start at 13.0s on row 2
+  setRow(2, "Barricade: 13.0s");
+
+  const iv = setInterval(() => {
+    const elapsed = (Date.now() - barricadeStartAt) / 1000;
+    const remaining = 13 - elapsed;
+
+    if (remaining <= 0) {
+      // freeze at 0.0 then clear after 5s
+      setRow(2, "Barricade: 0.0s");
+      try { clearInterval(iv); } catch {}
+      startBarricadeTimer._iv = null;
+
+      const t = setTimeout(() => { clearRow(2); }, 5000);
+      activeTimeouts.push(t);
+      return;
+    }
+
+    setRow(2, `Barricade: ${fmt(remaining)}s`);
+  }, tickMs);
+
+  startBarricadeTimer._iv = iv;
+  activeIntervals.push(iv);
+}
+
 /* ==== Added: shared interval builder for snuffed timers ==== */
 function makeSnuffedInterval() {
   const iv = setInterval(() => {
@@ -509,6 +545,12 @@ function stopSnuffedTimersAndReset() {
 
   snuffStartAt = 0;
 
+  barricadeStartAt = 0;
+  if (startBarricadeTimer._iv) {
+    try { clearInterval(startBarricadeTimer._iv); } catch {}
+    startBarricadeTimer._iv = null;
+  }
+  
   lastDisplayAt = 0;
   [0, 1, 2].forEach(clearRow);
   resetUI();
@@ -569,6 +611,7 @@ function onAmascutLine(full, lineId) {
   else if (raw.includes("Pathetic")) key = "pathetic";
   else if (low.includes("tear them apart")) key = "tear";
   else if (low.includes("bend the knee")) key = "bend";
+  else if (raw.includes("Tumeken's heart")) key = "tumeken";
   else if (raw.includes("Crondis... It should have never come to this")) key = "crondis";
   else if (raw.includes("I'm sorry, Apmeken")) key = "apmeken";
   else if (raw.includes("Forgive me, Het")) key = "het";
@@ -629,10 +672,14 @@ function onAmascutLine(full, lineId) {
     showSolo("Melee", "role-melee");   // red
   } else if (key === "soloRange") {
     showSolo("Range", "role-range");   // green
+  } else if (key === "tumeken") {
+    log("💙 Tumeken's heart — starting Barricade timer");
+    startBarricadeTimer();
   } else {
     // weak / grovel / pathetic — same behavior
     updateUI(key);
   }
+
 }
 
 function readChatbox() {
