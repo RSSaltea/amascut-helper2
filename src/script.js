@@ -106,8 +106,8 @@ let tickMs = 600; // default 0.6s display tick
 /* ============================================ */
 
 /* ===== Options panel (bottom-right) + minimise button + Set pos ===== */
-let posMode = false;           // positioning mode flag
-let posRaf = 0;                // RAF handle for mouse-follow
+let posMode = false;           // NEW: positioning mode flag
+let posRaf = 0;                // NEW: RAF handle for mouse-follow
 (function injectOptionsPanel(){
   const style = document.createElement("style");
   style.textContent = `
@@ -208,12 +208,13 @@ let posRaf = 0;                // RAF handle for mouse-follow
     extra.appendChild(btn);
   });
 
-  /* “Set pos” mini button (starts pos mode; save with Alt+1 or click again) */
+  /* NEW: “Set pos” mini button (starts pos mode; save with Alt+1 or click again) */
   const setPos = document.createElement("button");
-  setPos.textContent = "Set pos";
+  setPos.textContent = "Setting… (Alt+1)"; // initial text toggled below
   setPos.className = "ah-simple-btn";
   setPos.style.color = "#fff";
   extra.appendChild(setPos);
+  setPos.textContent = "Set pos"; // finalize default
 
   function stopPosMode(saveNow = false){
     posMode = false;
@@ -235,12 +236,14 @@ let posRaf = 0;                // RAF handle for mouse-follow
 
     const step = () => {
       if (!posMode) return;
+      // NEW: robust mouse position fallback chain
       const mp =
         (window.a1lib && typeof a1lib.getMousePosition === "function" && a1lib.getMousePosition()) ||
         (window.A1lib && typeof A1lib.getMousePosition === "function" && A1lib.getMousePosition()) ||
         null;
 
       if (mp && Number.isFinite(mp.x) && Number.isFinite(mp.y)) {
+        // Top-left of overlay at mouse pos; simple & predictable
         overlayPos = { x: Math.max(0, Math.floor(mp.x)), y: Math.max(0, Math.floor(mp.y)) };
       }
       posRaf = requestAnimationFrame(step);
@@ -249,9 +252,11 @@ let posRaf = 0;                // RAF handle for mouse-follow
   }
 
   setPos.addEventListener("click", () => {
+    // CHANGED: clicking again while positioning now SAVES
     if (posMode) { stopPosMode(true); } else { startPosMode(); }
   });
 
+  /* NEW: Alt1 global hotkey — try multiple bind styles */
   const bindAlt1 = (handler) => {
     try {
       if (window.a1lib && typeof a1lib.on === "function") {
@@ -269,6 +274,7 @@ let posRaf = 0;                // RAF handle for mouse-follow
   };
   const bound = bindAlt1(() => { if (posMode) stopPosMode(true); });
 
+  /* Fallback (for debugging outside RS focus) */
   window.addEventListener("keydown", (e) => {
     if (posMode && e.altKey && (e.code === "Digit1" || e.key === "1")) {
       e.preventDefault();
@@ -298,7 +304,6 @@ function autoResetIn10s() {
   lastDisplayAt = Date.now();
 }
 
-/* CHANGED: no more “Waiting...” — table is fully cleared & hidden */
 function resetUI() {
   clearActiveTimers();
   if (resetTimerId) { clearTimeout(resetTimerId); resetTimerId = null; }
@@ -307,9 +312,10 @@ function resetUI() {
 
   if (rows[0]) {
     const c0 = rows[0].querySelector("td");
-    if (c0) c0.textContent = "";
-    rows[0].style.display = "none";
-    rows[0].classList.remove("role-range", "role-magic", "role-melee", "callout", "flash", "selected");
+    if (c0) c0.textContent = "Waiting...";
+    rows[0].style.display = "";
+    rows[0].classList.remove("role-range", "role-magic", "role-melee", "callout", "flash");
+    rows[0].classList.add("selected");
   }
 
   for (let i = 1; i < rows.length; i++) {
@@ -540,6 +546,8 @@ function showSolo(role, cls) {
 /* ======================================================= */
 
 function onAmascutLine(full, lineId) {
+  // (remove the early seenLineIds block here)
+
   // Hard reset on session message
   if (/welcome to your session/i.test(full)) {
     log("🔄 Session welcome detected — full reset");
