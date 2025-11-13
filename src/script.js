@@ -773,6 +773,9 @@ function gatherSpecLines() {
     const text = (td?.textContent || "").trim();
     if (!text) return;
 
+    // 🔕 Don't draw "Waiting..." on the overlay
+    if (text === "Waiting...") return;
+
     let color = "#FFFFFF";
     if (row.classList.contains("role-range")) color = "#1fb34f"; // green
     else if (row.classList.contains("role-magic")) color = "#3a67ff"; // blue
