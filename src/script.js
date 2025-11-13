@@ -575,6 +575,21 @@ function stopSnuffedTimersAndReset() {
 let lastSig = "";
 let lastAt = 0;
 
+/* ===== Hard session reset helper (used by "Welcome to your session") ===== */
+function hardResetSession() {
+  log("🔄 Session welcome detected — full reset");
+
+  // clear dedupe/seen caches
+  seenLineIds.clear();
+  seenLineQueue.length = 0;
+  lastSig = "";
+  lastAt = 0;
+
+  // reset all timers & UI
+  stopSnuffedTimersAndReset();
+}
+/* ======================================================================== */
+
 /* ==== Added: colored, auto-clearing solo messages ==== */
 function showSolo(role, cls) {
   const rows = document.querySelectorAll("#spec tr");
@@ -604,10 +619,10 @@ function showSolo(role, cls) {
 /* ======================================================= */
 
 function onAmascutLine(full, lineId) {
-  // Hard reset on session message
+  // (this "welcome" check remains, but normally won't be hit because
+  // we now catch the message earlier in readChatbox)
   if (/welcome to your session/i.test(full)) {
-    log("🔄 Session welcome detected — full reset");
-    stopSnuffedTimersAndReset();
+    hardResetSession();
     return;
   }
 
@@ -703,6 +718,13 @@ function readChatbox() {
 
   for (let i = 0; i < segs.length; i++) {
     const seg = segs[i];
+
+    // NEW: hard reset when we see the session welcome message, no matter the speaker
+    if (seg && typeof seg.text === "string" && /welcome to your session/i.test(seg.text)) {
+      hardResetSession();
+      continue;
+    }
+
     if (!seg.fragments || seg.fragments.length === 0) continue;
 
     const hasNameColor = seg.fragments.some(f => isColorNear(f.color, NAME_RGB));
