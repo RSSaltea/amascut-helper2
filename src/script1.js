@@ -557,12 +557,7 @@ function startD2HTimer() {
       }
 
       d2hClearT = setTimeout(() => {
-        // clear only the text, keep the row visible
-        const rows = document.querySelectorAll("#spec tr");
-        if (rows[2]) {
-          const cell = rows[2].querySelector("td");
-          if (cell) cell.textContent = "";
-        }
+        clearRow(2);
         d2hClearT = 0;
       }, 2000);
 
@@ -776,7 +771,7 @@ function onAmascutLine(full, lineId) {
     log("💙 Tumeken's heart — starting Barricade timer");
     startBarricadeTimer();
   } else if (key === "d2h") {
-    clearClickInTimerOnly();
+    clearClickInTimerOnly();              // <--- ONLY CHANGE ADDED
     log("🗡 D2H line — starting D2H timer");
     startD2HTimer();
   } else {
