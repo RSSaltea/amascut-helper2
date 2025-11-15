@@ -771,6 +771,7 @@ function onAmascutLine(full, lineId) {
     log("💙 Tumeken's heart — starting Barricade timer");
     startBarricadeTimer();
   } else if (key === "d2h") {
+    clearClickInTimerOnly();
     log("🗡 D2H line — starting D2H timer");
     startD2HTimer();
   } else {
