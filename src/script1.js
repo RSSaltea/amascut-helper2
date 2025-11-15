@@ -771,9 +771,15 @@ function onAmascutLine(full, lineId) {
     log("💙 Tumeken's heart — starting Barricade timer");
     startBarricadeTimer();
   } else if (key === "d2h") {
-    clearClickInTimerOnly();              // <--- ONLY CHANGE ADDED
     log("🗡 D2H line — starting D2H timer");
     startD2HTimer();
+
+    // NEW: clear the "Click in" text when D2H line happens
+    const rows = document.querySelectorAll("#spec tr");
+    if (rows[1]) {
+      const cell = rows[1].querySelector("td");
+      if (cell) cell.textContent = "";
+    }
   } else {
     updateUI(key);
   }
