@@ -19,8 +19,29 @@ if (window.alt1) {
   document.body.innerHTML = `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
 }
 
-const seenLineIds = new Set();
-const seenLineQueue = [];
+// --- REPLACED: old seenLineIds / seenLineQueue ---
+const seenLineTimes = new Map();
+
+function shouldIgnoreLine(lineId, windowMs = 5000) {
+  const now = Date.now();
+  const last = seenLineTimes.get(lineId) ?? 0;
+
+  // Ignore if this exact line was seen very recently
+  if (now - last < windowMs) return true;
+
+  // Otherwise record it
+  seenLineTimes.set(lineId, now);
+
+  // Light cleanup if things get big
+  if (seenLineTimes.size > 400) {
+    const cutoff = now - 10 * 60 * 1000; // 10 minutes
+    for (const [id, ts] of seenLineTimes) {
+      if (ts < cutoff) seenLineTimes.delete(id);
+    }
+  }
+  return false;
+}
+// -------------------------------------------------
 
 let resetTimerId = null;
 let lastDisplayAt = 0; // for 10s window used by generic showMessage/updateUI
@@ -584,8 +605,7 @@ let lastAt = 0;
 function hardResetSession() {
   log("🔄 Session welcome detected — full reset");
 
-  seenLineIds.clear();
-  seenLineQueue.length = 0;
+  seenLineTimes.clear();
   lastSig = "";
   lastAt = 0;
 
@@ -645,15 +665,11 @@ function onAmascutLine(full, lineId) {
   else if (/Scabaras\.\.\.(?!\s*Het\.\.\.\s*Bear witness!?)/i.test(raw)) key = "scabaras";
   if (!key) return;
 
+  // --- NEW: time-window dedupe instead of "ever seen" ---
   if (key !== "snuffed" && lineId) {
-    if (seenLineIds.has(lineId)) return;
-    seenLineIds.add(lineId);
-    seenLineQueue.push(lineId);
-    if (seenLineQueue.length > 120) {
-      const old = seenLineQueue.shift();
-      seenLineIds.delete(old);
-    }
+    if (shouldIgnoreLine(lineId, 5000)) return;
   }
+  // ------------------------------------------------------
 
   const now = Date.now();
   if (key !== "snuffed") {
