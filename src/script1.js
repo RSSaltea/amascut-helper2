@@ -580,30 +580,34 @@ function clearClickInTimerOnly() {
 /* ==== Shared interval builder for snuffed timers ==== */
 function makeSnuffedInterval() {
   const iv = setInterval(() => {
-    const elapsed = (Date.now() - snuffStartAt) / 1000;
+    try {
+      const elapsed = (Date.now() - snuffStartAt) / 1000;
 
-    // --- Swap (14.4s one-shot) ---
-    const swapRemaining = 14.4 - elapsed;
-    if (swapRemaining <= 0) {
-      if (!startSnuffedTimers._swapFrozen) {
-        setRow(0, "Swap side: 0.0s");
-        startSnuffedTimers._swapFrozen = true;
-        const t = setTimeout(() => { clearRow(0); }, 5000);
-        activeTimeouts.push(t);
+      // --- Swap (14.4s one-shot) ---
+      const swapRemaining = 14.4 - elapsed;
+      if (swapRemaining <= 0) {
+        if (!startSnuffedTimers._swapFrozen) {
+          setRow(0, "Swap side: 0.0s");
+          startSnuffedTimers._swapFrozen = true;
+          const t = setTimeout(() => { clearRow(0); }, 5000);
+          activeTimeouts.push(t);
+        }
+      } else if (!startSnuffedTimers._swapFrozen) {
+        setRow(0, `Swap side: ${fmt(swapRemaining)}s`);
       }
-    } else if (!startSnuffedTimers._swapFrozen) {
-      setRow(0, `Swap side: ${fmt(swapRemaining)}s`);
-    }
 
-    // --- Click-in (9.0s repeating) ---
-    const period = 9.0;
-    if (!startSnuffedTimers._clickDisabled) {
-      let clickRemaining = period - (elapsed % period);
-      if (clickRemaining >= period - 1e-6) clickRemaining = 0;
-      setRow(1, `Click in: ${fmt(clickRemaining)}s`);
-    } else {
-      // ensure row is clear once disabled
-      clearRow(1);
+      // --- Click-in (9.0s repeating) ---
+      const period = 9.0;
+      if (!startSnuffedTimers._clickDisabled) {
+        let clickRemaining = period - (elapsed % period);
+        if (clickRemaining >= period - 1e-6) clickRemaining = 0;
+        setRow(1, `Click in: ${fmt(clickRemaining)}s`);
+      } else {
+        // ensure row is clear once disabled
+        clearRow(1);
+      }
+    } catch (e) {
+      console.error(e);
     }
   }, tickMs);
 
@@ -774,7 +778,8 @@ function onAmascutLine(full, lineId) {
     log("🗡 D2H line — starting D2H timer");
     startD2HTimer();
 
-    // NEW: clear the "Click in" text when D2H line happens
+    // Disable click-in timer for the rest of this wave and clear its text
+    startSnuffedTimers._clickDisabled = true;
     const rows = document.querySelectorAll("#spec tr");
     if (rows[1]) {
       const cell = rows[1].querySelector("td");
