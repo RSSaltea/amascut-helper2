@@ -311,11 +311,6 @@ function clearActiveTimers() {
   activeTimeouts = [];
 }
 
-/* helper to grab the three text lines */
-function getSpecLines() {
-  return document.querySelectorAll("#spec .spec-line");
-}
-
 function autoResetIn10s() {
   if (resetTimerId) clearTimeout(resetTimerId);
   resetTimerId = setTimeout(() => {
@@ -329,46 +324,57 @@ function resetUI() {
   clearActiveTimers();
   if (resetTimerId) { clearTimeout(resetTimerId); resetTimerId = null; }
 
-  const lines = getSpecLines();
+  const rows = document.querySelectorAll("#spec tr");
 
-  if (lines[0]) {
-    lines[0].textContent = "Waiting.";
-    lines[0].classList.remove("role-range", "role-magic", "role-melee", "callout", "flash", "selected");
-    lines[0].classList.add("selected");
+  if (rows[0]) {
+    const c0 = rows[0].querySelector("td");
+    if (c0) c0.textContent = ".";
+    rows[0].style.display = "";
+    rows[0].classList.remove("role-range", "role-magic", "role-melee", "callout", "flash");
+    rows[0].classList.add("selected");
   }
 
-  for (let i = 1; i < lines.length; i++) {
-    lines[i].textContent = "";
-    lines[i].classList.remove("role-range", "role-magic", "role-melee", "selected", "callout", "flash");
+  for (let i = 1; i < rows.length; i++) {
+    const c = rows[i].querySelector("td");
+    if (c) c.textContent = "";
+    rows[i].style.display = "none";
+    rows[i].classList.remove("role-range", "role-magic", "role-melee", "selected", "callout", "flash");
   }
 }
 
 function showMessage(text) {
-  const lines = getSpecLines();
-  if (!lines.length) return;
+  const rows = document.querySelectorAll("#spec tr");
+  if (!rows.length) return;
 
   const withinWindow = Date.now() - lastDisplayAt <= 10000;
 
-  for (let i = 0; i < lines.length; i++) {
-    lines[i].classList.remove("role-range", "role-magic", "role-melee");
-    lines[i].classList.remove("callout", "flash");
+  for (let i = 0; i < rows.length; i++) {
+    rows[i].classList.remove("role-range", "role-magic", "role-melee");
+    rows[i].classList.remove("callout", "flash");
   }
 
   if (!withinWindow) {
-    if (lines[0]) {
-      lines[0].textContent = text;
-      lines[0].classList.add("selected", "callout", "flash");
+    if (rows[0]) {
+      const c0 = rows[0].querySelector("td");
+      if (c0) c0.textContent = text;
+      rows[0].style.display = "table-row";
+      rows[0].classList.add("selected", "callout", "flash");
     }
-    for (let i = 1; i < lines.length; i++) {
-      lines[i].textContent = "";
-      lines[i].classList.remove("selected");
+    for (let i = 1; i < rows.length; i++) {
+      const c = rows[i].querySelector("td");
+      if (c) c.textContent = "";
+      rows[i].style.display = "none";
+      rows[i].classList.remove("selected");
     }
   } else {
-    if (lines[1]) {
-      lines[1].textContent = text;
-      lines[1].classList.add("selected", "callout", "flash");
-    } else if (lines[0]) {
-      lines[0].textContent = text;
+    if (rows[1]) {
+      const c1 = rows[1].querySelector("td");
+      if (c1) c1.textContent = text;
+      rows[1].style.display = "table-row";
+      rows[1].classList.add("selected", "callout", "flash");
+    } else {
+      const c0 = rows[0].querySelector("td");
+      if (c0) c0.textContent = text;
     }
   }
 
@@ -384,19 +390,24 @@ const RESPONSES = {
 
 function updateUI(key) {
   const order = RESPONSES[key].split(" > ");
-  const lines = getSpecLines();
+  const rows = document.querySelectorAll("#spec tr");
 
-  lines.forEach((line, i) => {
+  if (rows[0]) rows[0].style.display = "table-row";
+  if (rows[1]) rows[1].style.display = "table-row";
+  if (rows[2]) rows[2].style.display = "table-row";
+
+  rows.forEach((row, i) => {
     const role = order[i] || "";
-    line.textContent = role;
+    const cell = row.querySelector("td");
+    if (cell) cell.textContent = role;
 
-    line.classList.remove("callout", "flash");
-    line.classList.remove("role-range", "role-magic", "role-melee");
-    if (role === "Range") line.classList.add("role-range");
-    else if (role === "Magic") line.classList.add("role-magic");
-    else if (role === "Melee") line.classList.add("role-melee");
+    row.classList.remove("callout", "flash");
+    row.classList.remove("role-range", "role-magic", "role-melee");
+    if (role === "Range") row.classList.add("role-range");
+    else if (role === "Magic") row.classList.add("role-magic");
+    else if (role === "Melee") row.classList.add("role-melee");
 
-    line.classList.toggle("selected", i === 0);
+    row.classList.toggle("selected", i === 0);
   });
 
   log(`✅ ${RESPONSES[key]}`);
@@ -433,18 +444,22 @@ function firstNonWhiteColor(seg) {
   return null;
 }
 
-/* Helpers to ensure "lines" are visible and to print on fixed slots */
+/* Helpers to ensure rows are visible and to print on fixed rows */
 function setRow(i, text) {
-  const lines = getSpecLines();
-  if (!lines[i]) return;
-  lines[i].textContent = text;
-  lines[i].classList.add("selected", "callout", "flash");
+  const rows = document.querySelectorAll("#spec tr");
+  if (!rows[i]) return;
+  const cell = rows[i].querySelector("td");
+  if (cell) cell.textContent = text;
+  rows[i].style.display = "table-row";
+  rows[i].classList.add("selected", "callout", "flash");
 }
 function clearRow(i) {
-  const lines = getSpecLines();
-  if (!lines[i]) return;
-  lines[i].textContent = "";
-  lines[i].classList.remove("selected", "callout", "flash", "role-range", "role-magic", "role-melee");
+  const rows = document.querySelectorAll("#spec tr");
+  if (!rows[i]) return;
+  const cell = rows[i].querySelector("td");
+  if (cell) cell.textContent = "";
+  rows[i].style.display = "none";
+  rows[i].classList.remove("selected", "callout", "flash", "role-range", "role-magic", "role-melee");
 }
 
 /* format with one decimal (e.g., 14.4 → 14.4, 0.05 → 0.0) */
@@ -467,7 +482,7 @@ function stopBarricadeTimer(clearRowToo = true) {
     barricadeClearT = 0;
   }
   barricadeStartAt = 0;
-  if (clearRowToo) clearRow(2);   // slot 2 used for Barricade
+  if (clearRowToo) clearRow(2);   // row 2 used for Barricade
 }
 
 function startBarricadeTimer() {
@@ -518,7 +533,7 @@ function stopD2HTimer(clearRowToo = true) {
     d2hClearT = 0;
   }
   d2hStartAt = 0;
-  if (clearRowToo) clearRow(2);   // reuse slot 2
+  if (clearRowToo) clearRow(2);   // reuse row 2
 }
 
 function startD2HTimer() {
@@ -588,6 +603,7 @@ function makeSnuffedInterval() {
         if (clickRemaining >= period - 1e-6) clickRemaining = 0;
         setRow(1, `Click in: ${fmt(clickRemaining)}s`);
       } else {
+        // ensure row is clear once disabled
         clearRow(1);
       }
     } catch (e) {
@@ -655,18 +671,22 @@ function hardResetSession() {
 
 /* ==== Colored, auto-clearing solo messages ==== */
 function showSolo(role, cls) {
-  const lines = getSpecLines();
-  if (!lines.length) return;
+  const rows = document.querySelectorAll("#spec tr");
+  if (!rows.length) return;
 
-  for (let i = 0; i < lines.length; i++) {
-    lines[i].classList.remove("role-range","role-magic","role-melee","callout","flash","selected");
-    lines[i].textContent = "";
+  for (let i = 0; i < rows.length; i++) {
+    rows[i].classList.remove("role-range","role-magic","role-melee","callout","flash","selected");
+    const c = rows[i].querySelector("td");
+    if (c) c.textContent = "";
+    rows[i].style.display = "none";
   }
 
-  const line = lines[0];
-  if (line) {
-    line.textContent = role;
-    line.classList.add("selected","callout","flash",cls);
+  const row = rows[0];
+  if (row) {
+    const cell = row.querySelector("td");
+    if (cell) cell.textContent = role;
+    row.style.display = "table-row";
+    row.classList.add("selected","callout","flash",cls);
   }
 
   const t = setTimeout(() => { clearRow(0); }, 4000);
@@ -702,10 +722,11 @@ function onAmascutLine(full, lineId) {
   else if (low.includes("i will not be subjugated by a mortal")) key = "d2h";
   if (!key) return;
 
-  // --- time-window dedupe ---
+  // --- NEW: time-window dedupe instead of "ever seen" ---
   if (key !== "snuffed" && lineId) {
     if (shouldIgnoreLine(lineId, 5000)) return;
   }
+  // ------------------------------------------------------
 
   const now = Date.now();
   if (key !== "snuffed") {
@@ -756,8 +777,14 @@ function onAmascutLine(full, lineId) {
   } else if (key === "d2h") {
     log("🗡 D2H line — starting D2H timer");
     startD2HTimer();
+
+    // Disable click-in timer for the rest of this wave and clear its text
     startSnuffedTimers._clickDisabled = true;
-    clearRow(1);
+    const rows = document.querySelectorAll("#spec tr");
+    if (rows[1]) {
+      const cell = rows[1].querySelector("td");
+      if (cell) cell.textContent = "";
+    }
   } else {
     updateUI(key);
   }
@@ -897,7 +924,7 @@ function encodeImage(imgData) {
 
 /* ==================== Text-only overlay ==================== */
 function gatherSpecLines() {
-  const els = getSpecLines();
+  const rows = document.querySelectorAll("#spec tr");
   const lines = [];
 
   if (posMode) {
@@ -905,14 +932,16 @@ function gatherSpecLines() {
     return lines;
   }
 
-  els.forEach((el) => {
-    const text = (el.textContent || "").trim();
+  rows.forEach((row) => {
+    if (row.style.display === "none") return;
+    const td = row.querySelector("td");
+    const text = (td?.textContent || "").trim();
     if (!text) return;
 
     let color = "#FFFFFF";
-    if (el.classList.contains("role-range")) color = "#1fb34f";
-    else if (el.classList.contains("role-magic")) color = "#3a67ff";
-    else if (el.classList.contains("role-melee")) color = "#e13b3b";
+    if (row.classList.contains("role-range")) color = "#1fb34f";
+    else if (row.classList.contains("role-magic")) color = "#3a67ff";
+    else if (row.classList.contains("role-melee")) color = "#e13b3b";
 
     lines.push({ text, color });
   });
