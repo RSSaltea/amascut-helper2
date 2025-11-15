@@ -489,11 +489,11 @@ function startBarricadeTimer() {
   stopBarricadeTimer(false);
 
   barricadeStartAt = Date.now();
-  setRow(2, "Barricade: 13.0s");
+  setRow(2, "Barricade: 13.2s");
 
   barricadeIv = setInterval(() => {
     const elapsed   = (Date.now() - barricadeStartAt) / 1000;
-    const remaining = 13 - elapsed;
+    const remaining = 13.2 - elapsed;
 
     if (remaining <= 0) {
       setRow(2, "Barricade: 0.0s");
