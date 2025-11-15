@@ -557,7 +557,12 @@ function startD2HTimer() {
       }
 
       d2hClearT = setTimeout(() => {
-        clearRow(2);
+        // clear only the text, keep the row visible
+        const rows = document.querySelectorAll("#spec tr");
+        if (rows[2]) {
+          const cell = rows[2].querySelector("td");
+          if (cell) cell.textContent = "";
+        }
         d2hClearT = 0;
       }, 2000);
 
