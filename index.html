@@ -14,44 +14,29 @@
   <link rel="stylesheet" href="./src/css/tooltipster.bundle.min.css" />
   <link rel="stylesheet" href="./src/css/tooltipster.css" />
 
-<style>
-  body { font-family: Arial, sans-serif; color: #fff; background:#121212; }
-  #title { font-size: 24px; margin: 10px 0; text-align: center; }
-
-  /* Text-only spec area */
-  .spec-lines {
-    width: 100%;
-    margin-top: 10px;
-  }
-  .spec-line {
-    font-size: 18px;
-    line-height: 1.3;
-    padding: 2px 4px;
-    white-space: pre;
-  }
-
-  /* Match UI colours with overlay colours */
-  .role-range { color: #1fb34f; }
-  .role-magic { color: #3a67ff; }
-  .role-melee { color: #e13b3b; }
-
-  #output { margin:8px 0; font-size:11px; opacity:.75; }
-</style>
-
+  <style>
+    body { font-family: Arial, sans-serif; color: #fff; background:#121212; }
+    #title { font-size: 24px; margin: 10px 0; text-align: center; }
+    .attacks { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    .attacks tr { background: linear-gradient(#534c44,#271d14,#190e03,#190e03,#241a11); }
+    .attacks td { border: 1px solid #913200; text-align:center; padding:10px; font-size:18px; }
+    #output { margin:8px 0; font-size:11px; opacity:.75; }
+  </style>
 </head>
 <body class="nis">
-  
-<div id="title">Amascut Test v2.9</div>
+  <div id="title">Amascut Test v3</div>
 
-<div id="spec" class="spec-lines">
-  <div class="spec-line" data-index="0"></div>
-  <div class="spec-line" data-index="1"></div>
-  <div class="spec-line" data-index="2"></div>
-</div>
+  <table id="spec" class="attacks">
+    <tbody>
+      <tr id="style1" class="selected"><td>Waiting.</td></tr>
+      <tr id="style2"><td></td></tr>
+      <tr id="style3"><td></td></tr>
+    </tbody>
+  </table>
 
-<div id="output"></div>
+  <div id="output">
+  <!--<div id="output"></div>-->
 
-<script src="./src/script1.js"></script>
-
+  <script src="./src/script1.js"></script>
 </body>
 </html>
