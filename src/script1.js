@@ -64,6 +64,32 @@ try {
   }
 } catch {}
 
+/* === Exposed helpers for the popup === */
+window.amascutGetState = function () {
+  return {
+    overlayScale,
+    overlayEnabled,
+    overlayPos,
+    posMode,
+  };
+};
+
+window.amascutSetOverlayScale = function (v) {
+  overlayScale = v;
+  try { localStorage.setItem("amascut.overlayScale", String(v)); } catch {}
+};
+
+window.amascutSetOverlayEnabled = function (enabled) {
+  overlayEnabled = !!enabled;
+  try { localStorage.setItem("amascut.overlayEnabled", String(overlayEnabled)); } catch {}
+  if (!overlayEnabled) clearOverlayGroup();
+};
+
+window.amascutIsPosMode = function () {
+  return posMode;
+};
+/* ------------------------------------- */
+
 /* ---------- Logs toggle ---------- */
 (function injectLogsToggle(){
   const style = document.createElement("style");
@@ -381,46 +407,68 @@ function openOptionsPopup() {
       const posVal = document.getElementById("opt-pos-val");
       const closeBtn = document.getElementById("opt-close");
 
+      function getState() {
+        if (typeof parent.amascutGetState === "function") {
+          return parent.amascutGetState();
+        }
+        return {
+          overlayScale: parent.overlayScale || 1,
+          overlayEnabled: !!parent.overlayEnabled,
+          overlayPos: parent.overlayPos || null,
+          posMode: !!parent.posMode
+        };
+      }
+
       function refreshFromParent(){
-        size.value = String(parent.overlayScale || 1);
-        sizeVal.textContent = Number(parent.overlayScale || 1).toFixed(2) + "×";
+        const st = getState();
 
-        enableCb.checked = !!parent.overlayEnabled;
-        enableState.textContent = parent.overlayEnabled ? "On" : "Off";
+        size.value = String(st.overlayScale || 1);
+        sizeVal.textContent = Number(st.overlayScale || 1).toFixed(2) + "×";
 
-        const pos = parent.overlayPos;
+        enableCb.checked = !!st.overlayEnabled;
+        enableState.textContent = st.overlayEnabled ? "On" : "Off";
+
+        const pos = st.overlayPos;
         if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
           posVal.textContent = "Position: (" + pos.x + ", " + pos.y + ")";
         } else {
           posVal.textContent = "Position: centered";
         }
 
-        setPosBtn.textContent = parent.posMode ? "Saving… (Alt+1)" : "Set pos";
+        setPosBtn.textContent = st.posMode ? "Saving… (Alt+1)" : "Set pos";
       }
 
       refreshFromParent();
 
-      // Slider -> parent.overlayScale + localStorage
-      size.addEventListener("input", () => {
-        const v = Number(size.value) || 1;
-        parent.overlayScale = v;
+      // Slider -> real overlayScale via helper
+      size.addEventListener("input", function () {
+        var v = Number(size.value) || 1;
+        if (typeof parent.amascutSetOverlayScale === "function") {
+          parent.amascutSetOverlayScale(v);
+        } else {
+          parent.overlayScale = v;
+          try { parent.localStorage.setItem("amascut.overlayScale", String(v)); } catch (e) {}
+        }
         sizeVal.textContent = v.toFixed(2) + "×";
-        try { parent.localStorage.setItem("amascut.overlayScale", String(v)); } catch {}
       });
 
-      // Enable checkbox
-      enableCb.addEventListener("change", () => {
-        parent.overlayEnabled = enableCb.checked;
-        enableState.textContent = parent.overlayEnabled ? "On" : "Off";
-        try { parent.localStorage.setItem("amascut.overlayEnabled", String(parent.overlayEnabled)); } catch {}
-        if (!parent.overlayEnabled) {
-          try { parent.clearOverlayGroup(); } catch {}
+      // Enable checkbox -> real overlayEnabled via helper
+      enableCb.addEventListener("change", function () {
+        var on = enableCb.checked;
+        if (typeof parent.amascutSetOverlayEnabled === "function") {
+          parent.amascutSetOverlayEnabled(on);
+        } else {
+          parent.overlayEnabled = on;
+          try { parent.localStorage.setItem("amascut.overlayEnabled", String(on)); } catch (e) {}
+          if (!on && parent.clearOverlayGroup) parent.clearOverlayGroup();
         }
+        enableState.textContent = on ? "On" : "Off";
       });
 
       // Set pos button: toggle position mode in parent
-      setPosBtn.addEventListener("click", () => {
-        if (!parent.posMode) {
+      setPosBtn.addEventListener("click", function () {
+        var st = getState();
+        if (!st.posMode) {
           parent.startOverlayPosMode();
           setPosBtn.textContent = "Saving… (Alt+1)";
         } else {
@@ -430,16 +478,16 @@ function openOptionsPopup() {
       });
 
       // Close button
-      closeBtn.addEventListener("click", () => {
+      closeBtn.addEventListener("click", function () {
         window.close();
       });
 
       // Listen for messages from parent (position saved via Alt+1)
-      window.addEventListener("message", (evt) => {
-        const d = evt.data;
+      window.addEventListener("message", function (evt) {
+        var d = evt.data;
         if (!d || d.source !== "amascutParent") return;
         if (d.type === "posSaved") {
-          const pos = d.pos;
+          var pos = d.pos;
           if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
             posVal.textContent = "Position: (" + pos.x + ", " + pos.y + ")";
           } else {
@@ -449,7 +497,7 @@ function openOptionsPopup() {
         }
       });
 
-      // Small refresh if user re-opens popup later
+      // Periodic refresh in case parent state changes elsewhere
       setInterval(refreshFromParent, 1000);
     })();
   </script>
