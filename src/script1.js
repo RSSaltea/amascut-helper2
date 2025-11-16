@@ -126,37 +126,125 @@ let tickMs = 600; // default 0.6s display tick
 })();
 /* ============================================ */
 
-/* ===== Options panel (bottom-right) + minimise button + Set pos ===== */
-let posMode = false;           // NEW: positioning mode flag
-let posRaf = 0;                // NEW: RAF handle for mouse-follow
+/* ===== Options panel as a pop-out (bottom-right) + Set pos ===== */
+let posMode = false;           // positioning mode flag
+let posRaf = 0;                // RAF handle for mouse-follow
+
 (function injectOptionsPanel(){
   const style = document.createElement("style");
   style.textContent = `
-    .ah-panel{position:fixed;right:12px;bottom:12px;z-index:11050;min-width:260px;
-      background:#1b1f24cc;border:1px solid #444;border-radius:8px;padding:10px 10px 8px 10px;
-      box-shadow:0 6px 16px #000a;font-family:rs-pro-3;color:#ddd}
-    .ah-panel h4{margin:0 0 8px 0;font-size:14px;color:#fff;position:relative;padding-right:60px}
-    .ah-min-btn{position:absolute;right:0;top:-2px;font-size:12px;padding:4px 8px;border:1px solid #555;
-      background:#222;color:#ddd;border-radius:4px;cursor:pointer}
-    .ah-row{display:flex;align-items:center;gap:8px;margin:6px 0}
-    .ah-row label{font-size:12px;min-width:110px}
-    .ah-row input[type="range"]{flex:1}
-    .ah-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-    .ah-buttons > *{position:static !important; font-size:12px; line-height:1; padding:4px 8px; margin:0; color:#fff}
-    .ah-mini{position:fixed;right:12px;bottom:12px;z-index:11051;background:#1b1f24;
-      border:1px solid #444;border-radius:999px;padding:8px 12px;box-shadow:0 6px 16px #000a;
-      color:#ddd;font-family:rs-pro-3;cursor:pointer;display:none;user-select:none}
-    .ah-small{font-size:11px; opacity:.8}
-    .ah-simple-btn{border:1px solid #444;background:#222;border-radius:4px;cursor:pointer}
+    .ah-panel{
+      position:fixed;
+      right:12px;
+      bottom:48px;
+      z-index:11050;
+      min-width:260px;
+      background:#1b1f24cc;
+      border:1px solid #444;
+      border-radius:8px;
+      padding:10px 10px 8px 10px;
+      box-shadow:0 6px 16px #000a;
+      font-family:rs-pro-3;
+      color:#ddd;
+      opacity:0;
+      transform:translateY(8px) scale(.97);
+      pointer-events:none;
+      transition:opacity .15s ease-out, transform .15s ease-out;
+    }
+    .ah-panel.ah-open{
+      opacity:1;
+      transform:translateY(0) scale(1);
+      pointer-events:auto;
+    }
+    .ah-panel h4{
+      margin:0 0 8px 0;
+      font-size:14px;
+      color:#fff;
+      position:relative;
+      padding-right:60px;
+    }
+    .ah-close-btn{
+      position:absolute;
+      right:0;
+      top:-2px;
+      font-size:12px;
+      padding:4px 8px;
+      border:1px solid #555;
+      background:#222;
+      color:#ddd;
+      border-radius:4px;
+      cursor:pointer;
+    }
+    .ah-row{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      margin:6px 0;
+    }
+    .ah-row label{
+      font-size:12px;
+      min-width:110px;
+    }
+    .ah-row input[type="range"]{
+      flex:1;
+    }
+    .ah-buttons{
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+      margin-top:6px;
+    }
+    .ah-buttons > *{
+      position:static !important;
+      font-size:12px;
+      line-height:1;
+      padding:4px 8px;
+      margin:0;
+      color:#fff;
+    }
+    .ah-mini{
+      position:fixed;
+      right:12px;
+      bottom:12px;
+      z-index:11051;
+      background:#1b1f24;
+      border:1px solid #444;
+      border-radius:999px;
+      padding:8px 12px;
+      box-shadow:0 6px 16px #000a;
+      color:#ddd;
+      font-family:rs-pro-3;
+      cursor:pointer;
+      user-select:none;
+      display:flex;
+      align-items:center;
+      gap:4px;
+      font-size:13px;
+    }
+    .ah-mini span{
+      opacity:.8;
+      font-size:11px;
+    }
+    .ah-small{
+      font-size:11px;
+      opacity:.8;
+    }
+    .ah-simple-btn{
+      border:1px solid #444;
+      background:#222;
+      border-radius:4px;
+      cursor:pointer;
+    }
   `;
   document.head.appendChild(style);
 
+  // Pop-out panel (hidden by default)
   const panel = document.createElement("div");
   panel.className = "ah-panel";
   panel.innerHTML = `
     <h4>
       Amascut Helper – Options
-      <button id="ah-panel-min" class="ah-min-btn" title="Minimise">Minimise</button>
+      <button id="ah-panel-close" class="ah-close-btn" title="Close">Close</button>
     </h4>
     <div class="ah-row">
       <label for="ah-size">Overlay size</label>
@@ -169,27 +257,56 @@ let posRaf = 0;                // NEW: RAF handle for mouse-follow
       <span id="ah-enable-state"></span>
     </div>
     <div class="ah-buttons" id="ah-extra-btns"></div>
-    <div class="ah-row"><span id="ah-pos-val" class="ah-small"></span></div>
+    <div class="ah-row">
+      <span id="ah-pos-val" class="ah-small"></span>
+    </div>
   `;
   document.body.appendChild(panel);
 
+  // Little gear button that the panel pops out from
   const mini = document.createElement("div");
   mini.className = "ah-mini";
   mini.id = "ah-panel-mini";
-  mini.textContent = "⚙";
+  mini.innerHTML = `⚙ <span>Options</span>`;
   document.body.appendChild(mini);
 
-  let panelMin = (localStorage.getItem("amascut.panelMin") ?? "false") === "true";
-  function setPanelMin(min){
-    panelMin = !!min;
-    panel.style.display = panelMin ? "none" : "block";
-    mini.style.display = panelMin ? "block" : "none";
-    try { localStorage.setItem("amascut.panelMin", String(panelMin)); } catch {}
-  }
-  panel.querySelector("#ah-panel-min").addEventListener("click", () => setPanelMin(true));
-  mini.addEventListener("click", () => setPanelMin(false));
-  setPanelMin(panelMin);
+  let isOpen = false;
 
+  function openPanel() {
+    if (isOpen) return;
+    isOpen = true;
+    panel.classList.add("ah-open");
+    try { localStorage.setItem("amascut.panelOpen", "true"); } catch {}
+  }
+
+  function closePanel() {
+    if (!isOpen) return;
+    isOpen = false;
+    panel.classList.remove("ah-open");
+    try { localStorage.setItem("amascut.panelOpen", "false"); } catch {}
+  }
+
+  // Toggle panel on gear click
+  mini.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (isOpen) closePanel();
+    else openPanel();
+  });
+
+  // Close button on panel
+  panel.querySelector("#ah-panel-close").addEventListener("click", (e) => {
+    e.stopPropagation();
+    closePanel();
+  });
+
+  // Close when clicking outside panel (but not when clicking the mini button)
+  document.addEventListener("click", (e) => {
+    if (!isOpen) return;
+    if (panel.contains(e.target) || mini.contains(e.target)) return;
+    closePanel();
+  });
+
+  // --- Overlay size slider ---
   const size = panel.querySelector("#ah-size");
   const sizeVal = panel.querySelector("#ah-size-val");
   size.value = String(overlayScale);
@@ -200,6 +317,7 @@ let posRaf = 0;                // NEW: RAF handle for mouse-follow
     try { localStorage.setItem("amascut.overlayScale", String(overlayScale)); } catch {}
   });
 
+  // --- Overlay enabled toggle ---
   const cb = panel.querySelector("#ah-enable");
   const state = panel.querySelector("#ah-enable-state");
   const refreshEnableText = () => state.textContent = overlayEnabled ? "On" : "Off";
@@ -212,6 +330,7 @@ let posRaf = 0;                // NEW: RAF handle for mouse-follow
     if (!overlayEnabled) clearOverlayGroup();
   });
 
+  // --- Position label ---
   const posVal = panel.querySelector("#ah-pos-val");
   const updatePosLabel = () => {
     if (overlayPos) posVal.textContent = `Position: (${overlayPos.x}, ${overlayPos.y})`;
@@ -219,6 +338,7 @@ let posRaf = 0;                // NEW: RAF handle for mouse-follow
   };
   updatePosLabel();
 
+  // --- Attach existing Tick / Logs buttons into the panel ---
   const extra = panel.querySelector("#ah-extra-btns");
   const tickBtn = document.getElementById("ah-tick-toggle");
   const logsBtn = document.getElementById("ah-logs-toggle");
@@ -229,13 +349,12 @@ let posRaf = 0;                // NEW: RAF handle for mouse-follow
     extra.appendChild(btn);
   });
 
-  /* NEW: “Set pos” mini button (starts pos mode; save with Alt+1 or click again) */
+  // --- “Set pos” button (positioning mode) ---
   const setPos = document.createElement("button");
-  setPos.textContent = "Setting… (Alt+1)"; // initial text toggled below
+  setPos.textContent = "Set pos";
   setPos.className = "ah-simple-btn";
   setPos.style.color = "#fff";
   extra.appendChild(setPos);
-  setPos.textContent = "Set pos"; // finalize default
 
   function stopPosMode(saveNow = false){
     posMode = false;
@@ -274,6 +393,7 @@ let posRaf = 0;                // NEW: RAF handle for mouse-follow
     if (posMode) { stopPosMode(true); } else { startPosMode(); }
   });
 
+  // Alt+1 binding for saving position
   const bindAlt1 = (handler) => {
     try {
       if (window.a1lib && typeof a1lib.on === "function") {
@@ -302,6 +422,7 @@ let posRaf = 0;                // NEW: RAF handle for mouse-follow
     log("ℹ️ Alt+1 binding via a1lib.on not available; click Set pos again to save.");
   }
 })();
+
 /* ======================================== */
 
 function clearActiveTimers() {
