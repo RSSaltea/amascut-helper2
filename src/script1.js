@@ -126,82 +126,104 @@ let tickMs = 600; // default 0.6s display tick
 })();
 /* ============================================ */
 
-/* ===== Options panel as a pop-out (bottom-right) + Set pos ===== */
-let posMode = false;           // positioning mode flag
-let posRaf = 0;                // RAF handle for mouse-follow
+/* ===== Options POP-OUT window + bottom-right button + Set pos ===== */
 
-(function injectOptionsPanel(){
+/* Global positioning state (used by main window + popup) */
+let posMode = false;
+let posRaf = 0;
+window.amascutOptsWin = null;  // reference to popup (if open)
+
+/* Start following the mouse to set overlay position */
+function startOverlayPosMode() {
+  if (posMode) return;
+  posMode = true;
+
+  try { alt1 && alt1.setTooltip && alt1.setTooltip("Press Alt+1 to save overlay position!"); } catch {}
+
+  const step = () => {
+    if (!posMode) return;
+
+    const mp =
+      (window.a1lib && typeof a1lib.getMousePosition === "function" && a1lib.getMousePosition()) ||
+      (window.A1lib && typeof A1lib.getMousePosition === "function" && A1lib.getMousePosition()) ||
+      null;
+
+    if (mp && Number.isFinite(mp.x) && Number.isFinite(mp.y)) {
+      overlayPos = {
+        x: Math.max(0, Math.floor(mp.x)),
+        y: Math.max(0, Math.floor(mp.y)),
+      };
+    }
+    posRaf = requestAnimationFrame(step);
+  };
+  posRaf = requestAnimationFrame(step);
+}
+
+/* Stop mouse-follow mode, optionally save & ping popup */
+function stopOverlayPosMode(saveNow = false) {
+  if (!posMode) return;
+  posMode = false;
+
+  try { alt1 && alt1.clearTooltip && alt1.clearTooltip(); } catch {}
+  if (posRaf) {
+    cancelAnimationFrame(posRaf);
+    posRaf = 0;
+  }
+
+  if (saveNow && overlayPos) {
+    try { localStorage.setItem("amascut.overlayPos", JSON.stringify(overlayPos)); } catch {}
+    log(`📍 Overlay position set to ${overlayPos.x}, ${overlayPos.y}`);
+  }
+
+  // Tell popup to update its label/button
+  if (window.amascutOptsWin && !window.amascutOptsWin.closed) {
+    try {
+      window.amascutOptsWin.postMessage(
+        { source: "amascutParent", type: "posSaved", pos: overlayPos },
+        "*"
+      );
+    } catch {}
+  }
+}
+
+/* Bind Alt+1 in the main window to “confirm position” */
+(function bindAlt1Global(){
+  const bindAlt1 = (handler) => {
+    try {
+      if (window.a1lib && typeof a1lib.on === "function") {
+        a1lib.on("alt1pressed", handler);
+        return true;
+      }
+    } catch {}
+    try {
+      if (window.A1lib && typeof A1lib.on === "function") {
+        A1lib.on("alt1pressed", handler);
+        return true;
+      }
+    } catch {}
+    return false;
+  };
+
+  const ok = bindAlt1(() => {
+    if (posMode) stopOverlayPosMode(true);
+  });
+
+  if (!ok) {
+    log("ℹ️ Alt+1 binding via a1lib.on not available; use Set pos button instead.");
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (posMode && e.altKey && (e.code === "Digit1" || e.key === "1")) {
+      e.preventDefault();
+      stopOverlayPosMode(true);
+    }
+  });
+})();
+
+/* Create the bottom-right “Options” button and wire up the popup */
+(function injectOptionsPopupButton(){
   const style = document.createElement("style");
   style.textContent = `
-    .ah-panel{
-      position:fixed;
-      right:12px;
-      bottom:48px;
-      z-index:11050;
-      min-width:260px;
-      background:#1b1f24cc;
-      border:1px solid #444;
-      border-radius:8px;
-      padding:10px 10px 8px 10px;
-      box-shadow:0 6px 16px #000a;
-      font-family:rs-pro-3;
-      color:#ddd;
-      opacity:0;
-      transform:translateY(8px) scale(.97);
-      pointer-events:none;
-      transition:opacity .15s ease-out, transform .15s ease-out;
-    }
-    .ah-panel.ah-open{
-      opacity:1;
-      transform:translateY(0) scale(1);
-      pointer-events:auto;
-    }
-    .ah-panel h4{
-      margin:0 0 8px 0;
-      font-size:14px;
-      color:#fff;
-      position:relative;
-      padding-right:60px;
-    }
-    .ah-close-btn{
-      position:absolute;
-      right:0;
-      top:-2px;
-      font-size:12px;
-      padding:4px 8px;
-      border:1px solid #555;
-      background:#222;
-      color:#ddd;
-      border-radius:4px;
-      cursor:pointer;
-    }
-    .ah-row{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      margin:6px 0;
-    }
-    .ah-row label{
-      font-size:12px;
-      min-width:110px;
-    }
-    .ah-row input[type="range"]{
-      flex:1;
-    }
-    .ah-buttons{
-      display:flex;
-      gap:6px;
-      flex-wrap:wrap;
-      margin-top:6px;
-    }
-    .ah-buttons > *{
-      position:static !important;
-      font-size:12px;
-      line-height:1;
-      padding:4px 8px;
-      margin:0;
-      color:#fff;
-    }
     .ah-mini{
       position:fixed;
       right:12px;
@@ -225,203 +247,218 @@ let posRaf = 0;                // RAF handle for mouse-follow
       opacity:.8;
       font-size:11px;
     }
-    .ah-small{
-      font-size:11px;
-      opacity:.8;
-    }
-    .ah-simple-btn{
-      border:1px solid #444;
-      background:#222;
-      border-radius:4px;
-      cursor:pointer;
-    }
   `;
   document.head.appendChild(style);
 
-  // Pop-out panel (hidden by default)
-  const panel = document.createElement("div");
-  panel.className = "ah-panel";
-  panel.innerHTML = `
-    <h4>
-      Amascut Helper – Options
-      <button id="ah-panel-close" class="ah-close-btn" title="Close">Close</button>
-    </h4>
-    <div class="ah-row">
-      <label for="ah-size">Overlay size</label>
-      <input id="ah-size" type="range" min="0.25" max="2" step="0.05">
-      <span id="ah-size-val" style="width:48px;text-align:right;">1.00×</span>
-    </div>
-    <div class="ah-row">
-      <label for="ah-enable">Overlay</label>
-      <input id="ah-enable" type="checkbox">
-      <span id="ah-enable-state"></span>
-    </div>
-    <div class="ah-buttons" id="ah-extra-btns"></div>
-    <div class="ah-row">
-      <span id="ah-pos-val" class="ah-small"></span>
-    </div>
-  `;
-  document.body.appendChild(panel);
-
-  // Little gear button that the panel pops out from
   const mini = document.createElement("div");
   mini.className = "ah-mini";
   mini.id = "ah-panel-mini";
   mini.innerHTML = `⚙ <span>Options</span>`;
   document.body.appendChild(mini);
 
-  let isOpen = false;
-
-  function openPanel() {
-    if (isOpen) return;
-    isOpen = true;
-    panel.classList.add("ah-open");
-    try { localStorage.setItem("amascut.panelOpen", "true"); } catch {}
-  }
-
-  function closePanel() {
-    if (!isOpen) return;
-    isOpen = false;
-    panel.classList.remove("ah-open");
-    try { localStorage.setItem("amascut.panelOpen", "false"); } catch {}
-  }
-
-  // Toggle panel on gear click
   mini.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (isOpen) closePanel();
-    else openPanel();
+    openOptionsPopup();
   });
-
-  // Close button on panel
-  panel.querySelector("#ah-panel-close").addEventListener("click", (e) => {
-    e.stopPropagation();
-    closePanel();
-  });
-
-  // Close when clicking outside panel (but not when clicking the mini button)
-  document.addEventListener("click", (e) => {
-    if (!isOpen) return;
-    if (panel.contains(e.target) || mini.contains(e.target)) return;
-    closePanel();
-  });
-
-  // --- Overlay size slider ---
-  const size = panel.querySelector("#ah-size");
-  const sizeVal = panel.querySelector("#ah-size-val");
-  size.value = String(overlayScale);
-  sizeVal.textContent = `${Number(overlayScale).toFixed(2)}×`;
-  size.addEventListener("input", () => {
-    overlayScale = Number(size.value);
-    sizeVal.textContent = `${overlayScale.toFixed(2)}×`;
-    try { localStorage.setItem("amascut.overlayScale", String(overlayScale)); } catch {}
-  });
-
-  // --- Overlay enabled toggle ---
-  const cb = panel.querySelector("#ah-enable");
-  const state = panel.querySelector("#ah-enable-state");
-  const refreshEnableText = () => state.textContent = overlayEnabled ? "On" : "Off";
-  cb.checked = overlayEnabled;
-  refreshEnableText();
-  cb.addEventListener("change", () => {
-    overlayEnabled = cb.checked;
-    try { localStorage.setItem("amascut.overlayEnabled", String(overlayEnabled)); } catch {}
-    refreshEnableText();
-    if (!overlayEnabled) clearOverlayGroup();
-  });
-
-  // --- Position label ---
-  const posVal = panel.querySelector("#ah-pos-val");
-  const updatePosLabel = () => {
-    if (overlayPos) posVal.textContent = `Position: (${overlayPos.x}, ${overlayPos.y})`;
-    else posVal.textContent = `Position: centered`;
-  };
-  updatePosLabel();
-
-  // --- Attach existing Tick / Logs buttons into the panel ---
-  const extra = panel.querySelector("#ah-extra-btns");
-  const tickBtn = document.getElementById("ah-tick-toggle");
-  const logsBtn = document.getElementById("ah-logs-toggle");
-  [tickBtn, logsBtn].forEach(btn => {
-    if (!btn) return;
-    btn.style.position = "static";
-    btn.style.margin = "0";
-    extra.appendChild(btn);
-  });
-
-  // --- “Set pos” button (positioning mode) ---
-  const setPos = document.createElement("button");
-  setPos.textContent = "Set pos";
-  setPos.className = "ah-simple-btn";
-  setPos.style.color = "#fff";
-  extra.appendChild(setPos);
-
-  function stopPosMode(saveNow = false){
-    posMode = false;
-    setPos.textContent = "Set pos";
-    try { alt1 && alt1.clearTooltip && alt1.clearTooltip(); } catch {}
-    if (posRaf) cancelAnimationFrame(posRaf), posRaf = 0;
-    if (saveNow && overlayPos) {
-      localStorage.setItem("amascut.overlayPos", JSON.stringify(overlayPos));
-      updatePosLabel();
-      log(`📍 Overlay position set to ${overlayPos.x}, ${overlayPos.y}`);
-    }
-  }
-
-  function startPosMode(){
-    if (posMode) return;
-    posMode = true;
-    setPos.textContent = "Setting… (Alt+1)";
-    try { alt1 && alt1.setTooltip && alt1.setTooltip("Press Alt+1 to save overlay position!"); } catch {}
-
-    const step = () => {
-      if (!posMode) return;
-      const mp =
-        (window.a1lib && typeof a1lib.getMousePosition === "function" && a1lib.getMousePosition()) ||
-        (window.A1lib && typeof A1lib.getMousePosition === "function" && A1lib.getMousePosition()) ||
-        null;
-
-      if (mp && Number.isFinite(mp.x) && Number.isFinite(mp.y)) {
-        overlayPos = { x: Math.max(0, Math.floor(mp.x)), y: Math.max(0, Math.floor(mp.y)) };
-      }
-      posRaf = requestAnimationFrame(step);
-    };
-    posRaf = requestAnimationFrame(step);
-  }
-
-  setPos.addEventListener("click", () => {
-    if (posMode) { stopPosMode(true); } else { startPosMode(); }
-  });
-
-  // Alt+1 binding for saving position
-  const bindAlt1 = (handler) => {
-    try {
-      if (window.a1lib && typeof a1lib.on === "function") {
-        a1lib.on("alt1pressed", handler);
-        return true;
-      }
-    } catch {}
-    try {
-      if (window.A1lib && typeof A1lib.on === "function") {
-        A1lib.on("alt1pressed", handler);
-        return true;
-      }
-    } catch {}
-    return false;
-  };
-  const bound = bindAlt1(() => { if (posMode) stopPosMode(true); });
-
-  window.addEventListener("keydown", (e) => {
-    if (posMode && e.altKey && (e.code === "Digit1" || e.key === "1")) {
-      e.preventDefault();
-      stopPosMode(true);
-    }
-  });
-
-  if (!bound) {
-    log("ℹ️ Alt+1 binding via a1lib.on not available; click Set pos again to save.");
-  }
 })();
+
+/* Actually open the separate window and build the UI inside it */
+function openOptionsPopup() {
+  // Reuse existing window if still open
+  if (window.amascutOptsWin && !window.amascutOptsWin.closed) {
+    window.amascutOptsWin.focus();
+    return;
+  }
+
+  const win = window.open(
+    "",
+    "AmascutOptions",
+    "width=360,height=260,resizable=yes"
+  );
+  if (!win) {
+    log("⚠️ Failed to open options popup (blocked by browser?).");
+    return;
+  }
+  window.amascutOptsWin = win;
+
+  // Basic HTML skeleton for the popup
+  win.document.write(`
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Amascut Helper – Options</title>
+<style>
+  body{
+    margin:8px;
+    background:#1b1f24;
+    color:#ddd;
+    font-family:rs-pro-3, system-ui, -apple-system, Segoe UI, Arial, sans-serif;
+  }
+  h4{
+    margin:0 0 8px 0;
+    font-size:14px;
+    color:#fff;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  button{
+    font-size:12px;
+  }
+  .row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:6px 0;
+  }
+  .row label{
+    font-size:12px;
+    min-width:110px;
+  }
+  .row input[type="range"]{
+    flex:1;
+  }
+  .small{
+    font-size:11px;
+    opacity:.8;
+  }
+  .btn{
+    border:1px solid #444;
+    background:#222;
+    color:#fff;
+    border-radius:4px;
+    padding:4px 8px;
+    cursor:pointer;
+  }
+  .btn-row{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    margin-top:6px;
+  }
+</style>
+</head>
+<body>
+  <h4>
+    Amascut Helper – Options
+    <button id="opt-close" class="btn">Close</button>
+  </h4>
+
+  <div class="row">
+    <label for="opt-size">Overlay size</label>
+    <input id="opt-size" type="range" min="0.25" max="2" step="0.05">
+    <span id="opt-size-val" style="width:48px;text-align:right;">1.00×</span>
+  </div>
+
+  <div class="row">
+    <label for="opt-enable">Overlay</label>
+    <input id="opt-enable" type="checkbox">
+    <span id="opt-enable-state"></span>
+  </div>
+
+  <div class="btn-row">
+    <button id="opt-set-pos" class="btn">Set pos</button>
+  </div>
+
+  <div class="row">
+    <span id="opt-pos-val" class="small"></span>
+  </div>
+
+  <script>
+    (function(){
+      const parent = window.opener;
+      if (!parent) {
+        document.body.innerHTML = "<p>Parent window not available.</p>";
+        return;
+      }
+
+      const size = document.getElementById("opt-size");
+      const sizeVal = document.getElementById("opt-size-val");
+      const enableCb = document.getElementById("opt-enable");
+      const enableState = document.getElementById("opt-enable-state");
+      const setPosBtn = document.getElementById("opt-set-pos");
+      const posVal = document.getElementById("opt-pos-val");
+      const closeBtn = document.getElementById("opt-close");
+
+      function refreshFromParent(){
+        size.value = String(parent.overlayScale || 1);
+        sizeVal.textContent = Number(parent.overlayScale || 1).toFixed(2) + "×";
+
+        enableCb.checked = !!parent.overlayEnabled;
+        enableState.textContent = parent.overlayEnabled ? "On" : "Off";
+
+        const pos = parent.overlayPos;
+        if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
+          posVal.textContent = "Position: (" + pos.x + ", " + pos.y + ")";
+        } else {
+          posVal.textContent = "Position: centered";
+        }
+
+        setPosBtn.textContent = parent.posMode ? "Saving… (Alt+1)" : "Set pos";
+      }
+
+      refreshFromParent();
+
+      // Slider -> parent.overlayScale + localStorage
+      size.addEventListener("input", () => {
+        const v = Number(size.value) || 1;
+        parent.overlayScale = v;
+        sizeVal.textContent = v.toFixed(2) + "×";
+        try { parent.localStorage.setItem("amascut.overlayScale", String(v)); } catch {}
+      });
+
+      // Enable checkbox
+      enableCb.addEventListener("change", () => {
+        parent.overlayEnabled = enableCb.checked;
+        enableState.textContent = parent.overlayEnabled ? "On" : "Off";
+        try { parent.localStorage.setItem("amascut.overlayEnabled", String(parent.overlayEnabled)); } catch {}
+        if (!parent.overlayEnabled) {
+          try { parent.clearOverlayGroup(); } catch {}
+        }
+      });
+
+      // Set pos button: toggle position mode in parent
+      setPosBtn.addEventListener("click", () => {
+        if (!parent.posMode) {
+          parent.startOverlayPosMode();
+          setPosBtn.textContent = "Saving… (Alt+1)";
+        } else {
+          parent.stopOverlayPosMode(true);
+          setPosBtn.textContent = "Set pos";
+        }
+      });
+
+      // Close button
+      closeBtn.addEventListener("click", () => {
+        window.close();
+      });
+
+      // Listen for messages from parent (position saved via Alt+1)
+      window.addEventListener("message", (evt) => {
+        const d = evt.data;
+        if (!d || d.source !== "amascutParent") return;
+        if (d.type === "posSaved") {
+          const pos = d.pos;
+          if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
+            posVal.textContent = "Position: (" + pos.x + ", " + pos.y + ")";
+          } else {
+            posVal.textContent = "Position: centered";
+          }
+          setPosBtn.textContent = "Set pos";
+        }
+      });
+
+      // Small refresh if user re-opens popup later
+      setInterval(refreshFromParent, 1000);
+    })();
+  </script>
+</body>
+</html>
+  `);
+
+  win.document.close();
+}
 
 /* ======================================== */
 
