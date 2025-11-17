@@ -72,14 +72,13 @@ const VOICE_LINE_LABELS = {
   // Group: spec order lines
   specGroup: "3 multi hit (base only)",
 
+  // Group: P7 calls
+  p7Call: "P7 Call",
+
   snuffed: "Swap timer + click timer",
   tear: "Scarabs",
   bend: "Bend the Knee",
   tumeken: "P5 Barricade Timer",
-  crondis: "Crondis (SE)",
-  apmeken: "Apmeken (NW)",
-  het: "Het (SW)",
-  scabaras: "Scabaras (NE)",
   d2h: "P6 D2H Timer",
   d2hAoE: "P6 AoE reminder",
 };
@@ -107,6 +106,12 @@ function isVoiceLineEnabled(key) {
   // Group: solo calls share one toggle
   if (key === "soloWeakMagic" || key === "soloMelee" || key === "soloRange") {
     const v = voiceLineConfig["soloGroup"];
+    return v !== false; // default ON
+  }
+
+  // Group: P7 calls share one toggle
+  if (key === "crondis" || key === "apmeken" || key === "het" || key === "scabaras") {
+    const v = voiceLineConfig["p7Call"];
     return v !== false; // default ON
   }
 
