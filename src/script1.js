@@ -66,22 +66,21 @@ try {
 
 /* === Voice-line config (per-line toggles) === */
 const VOICE_LINE_LABELS = {
-  soloWeakMagic: "Solo – Your soul is weak (Magic)",
-  soloMelee:     "Solo – All strength withers (Melee)",
-  soloRange:     "Solo – I will not suffer this (Range)",
-  snuffed:       "Your light will be snuffed out (snuff timers)",
-  newdawn:       "A new dawn (reset timers)",
-  grovel:        "Grovel (Magic > Melee > Range)",
-  weak:          "Weak (Range > Magic > Melee)",
-  pathetic:      "Pathetic (Melee > Range > Magic)",
-  tear:          "\"Tear them apart\" (Scarabs + Bend)",
-  bend:          "\"Bend the knee\"",
-  tumeken:       "Tumeken's heart (Barricade timer)",
-  crondis:       "Crondis (SE)",
-  apmeken:       "Apmeken (NW)",
-  het:           "Het (SW)",
-  scabaras:      "Scabaras (NE)",
-  d2h:           "\"I will not be subjugated\" (D2H)",
+  // Group: solo calls
+  soloGroup: "3 hit barrage",
+
+  // Group: spec order lines
+  specGroup: "3 multi hit (base only)",
+
+  snuffed: "Swap timer + click timer",
+  tear: "Scarabs",
+  bend: "Bend the Knee",
+  tumeken: "P5 Barricade Timer",
+  crondis: "Crondis (SE)",
+  apmeken: "Apmeken (NW)",
+  het: "Het (SW)",
+  scabaras: "Scabaras (NE)",
+  d2h: "P6 D2H Timer",
 };
 
 let voiceLineConfig = {};
@@ -94,10 +93,26 @@ try {
 } catch {}
 
 function isVoiceLineEnabled(key) {
-  // default to enabled if not explicitly false
+  // "A new dawn" is always on, no toggle
+  if (key === "newdawn") return true;
+
+  // Group: Grovel / Weak / Pathetic share one toggle
+  if (key === "grovel" || key === "weak" || key === "pathetic") {
+    const v = voiceLineConfig["specGroup"];
+    return v !== false; // default ON
+  }
+
+  // Group: solo calls share one toggle
+  if (key === "soloWeakMagic" || key === "soloMelee" || key === "soloRange") {
+    const v = voiceLineConfig["soloGroup"];
+    return v !== false; // default ON
+  }
+
+  // Everything else uses its own key like before
   const v = voiceLineConfig[key];
-  return v !== false;
+  return v !== false; // default ON
 }
+
 
 function setVoiceLineEnabled(key, enabled) {
   voiceLineConfig[key] = !!enabled;
