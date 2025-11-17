@@ -1127,9 +1127,36 @@ function onAmascutLine(full, lineId) {
 
 function readChatbox() {
   let segs = [];
-  try { segs = reader.read() || []; }
-  catch (e) { log("⚠️ reader.read() failed; enable Pixel permission in Alt1."); return; }
-  if (!segs.length) return;
+  try {
+    segs = reader.read() || [];
+  } catch (e) {
+    log("⚠️ reader.read() failed; enable Pixel permission in Alt1. Error: " + (e?.message || e));
+    return;
+  }
+
+  if (!segs.length) {
+    emptyReadCount++;
+
+    // Every ~5 seconds (20 * 250ms) let you know we're seeing nothing
+    if (emptyReadCount % 20 === 0) {
+      log("👀 No chat text detected in last " + emptyReadCount + " reads");
+    }
+
+    // After ~10 seconds of nothing, try finding the chatbox again
+    if (emptyReadCount >= 40) {
+      try {
+        log("🔁 Re-finding chatbox (no text detected for a while)...");
+        reader.find();
+      } catch (e) {
+        log("⚠️ reader.find() while recovering failed: " + (e?.message || e));
+      }
+      emptyReadCount = 0;
+    }
+    return;
+  }
+
+  // We saw text again, reset the counter
+  emptyReadCount = 0;
 
   for (let i = 0; i < segs.length; i++) {
     const seg = segs[i];
