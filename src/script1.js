@@ -1079,18 +1079,19 @@ function onAmascutLine(full, lineId) {
   else if (raw.includes("Forgive me, Het")) key = "het";
   else if (/Scabaras\.\.\.(?!\s*Het\.\.\.\s*Bear witness!?)/i.test(raw)) key = "scabaras";
   else if (low.includes("i will not be subjugated by a mortal")) key = "d2h";
-if (!key) return;
 
-if (key !== "d2h" && !isVoiceLineEnabled(key)) {
-  log("🔇 Suppressed voice line: " + key);
-  return;
-}
+  if (!key) return;
 
-  // --- NEW: time-window dedupe instead of "ever seen" ---
+  // honour toggles for everything EXCEPT d2h (handled specially below)
+  if (key !== "d2h" && !isVoiceLineEnabled(key)) {
+    log("🔇 Suppressed voice line: " + key);
+    return;
+  }
+
+  // time-window dedupe
   if (key !== "snuffed" && lineId) {
     if (shouldIgnoreLine(lineId, 5000)) return;
   }
-  // ------------------------------------------------------
 
   const now = Date.now();
   if (key !== "snuffed") {
@@ -1100,6 +1101,7 @@ if (key !== "d2h" && !isVoiceLineEnabled(key)) {
     lastAt = now;
   }
 
+  // behaviour per key
   if (key === "snuffed") {
     if (snuffStartAt) {
       log("⚡ Snuffed out already active — ignoring duplicate");
@@ -1138,35 +1140,40 @@ if (key !== "d2h" && !isVoiceLineEnabled(key)) {
   } else if (key === "tumeken") {
     log("💙 Tumeken's heart — starting Barricade timer");
     startBarricadeTimer();
-} else if (key === "d2h") {
-  // Two independent toggles:
-  const d2hTimerOn = isVoiceLineEnabled("d2h");      // P6 D2H Timer
-  const d2hAoeOn   = isVoiceLineEnabled("d2hAoE");   // P6 AoE reminder
+  } else if (key === "d2h") {
+    // Two independent toggles:
+    const d2hTimerOn = isVoiceLineEnabled("d2h");    // P6 D2H Timer
+    const d2hAoeOn   = isVoiceLineEnabled("d2hAoE"); // P6 AoE reminder
 
-  if (!d2hTimerOn && !d2hAoeOn) {
-    log("🔇 Suppressed AoE Timer");
-  } else {
-    if (d2hTimerOn) {
-      log("🗡 D2H line — starting D2H timer");
-      startD2HTimer();
+    if (!d2hTimerOn && !d2hAoeOn) {
+      log("🔇 Suppressed D2H effects (timer + AoE reminder)");
     } else {
-      log("🔇 D2H timer suppressed");
+      if (d2hTimerOn) {
+        log("🗡 D2H line — starting D2H timer");
+        startD2HTimer();
+      } else {
+        log("🔇 D2H timer suppressed");
+      }
+
+      if (d2hAoeOn) {
+        showMessage("Threads / Gchain soon");
+      }
     }
 
-    if (d2hAoeOn) {
-      showMessage("Threads / Gchain soon");
+    // always disable click-in timer for this wave
+    startSnuffedTimers._clickDisabled = true;
+    const rows = document.querySelectorAll("#spec tr");
+    if (rows[1]) {
+      const cell = rows[1].querySelector("td");
+      if (cell) cell.textContent = "";
     }
+  } else {
+    // grovel / weak / pathetic and anything else that maps to RESPONSES
+    updateUI(key);
   }
-
-  startSnuffedTimers._clickDisabled = true;
-  const rows = document.querySelectorAll("#spec tr");
-  if (rows[1]) {
-    const cell = rows[1].querySelector("td");
-    if (cell) cell.textContent = "";
-  }
-} else {
-  updateUI(key);
 }
+
+//* --- *//
 
 function readChatbox() {
   let segs = [];
