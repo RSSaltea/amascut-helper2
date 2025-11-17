@@ -785,10 +785,22 @@ function setRow(i, text) {
 function clearRow(i) {
   const rows = document.querySelectorAll("#spec tr");
   if (!rows[i]) return;
-  const cell = rows[i].querySelector("td");
+  const row = rows[i];
+  const cell = row.querySelector("td");
+
+  if (i === 0) {
+    // Baseline row: keep the table alive with a single dot.
+    if (cell) cell.textContent = ".";
+    row.style.display = "table-row";
+    row.classList.remove("callout", "flash", "role-range", "role-magic", "role-melee");
+    row.classList.add("selected");
+    return;
+  }
+
+  // Normal behaviour for rows 1, 2, ...
   if (cell) cell.textContent = "";
-  rows[i].style.display = "none";
-  rows[i].classList.remove("selected", "callout", "flash", "role-range", "role-magic", "role-melee");
+  row.style.display = "none";
+  row.classList.remove("selected", "callout", "flash", "role-range", "role-magic", "role-melee");
 }
 
 /* format with one decimal (e.g., 14.4 → 14.4, 0.05 → 0.0) */
