@@ -985,6 +985,7 @@ function stopSnuffedTimersAndReset() {
 
 let lastSig = "";
 let lastAt = 0;
+let emptyReadCount = 0;
 
 /* ===== Hard session reset helper ===== */
 function hardResetSession() {
@@ -1134,19 +1135,28 @@ function readChatbox() {
     return;
   }
 
+  // If we literally got nothing back, try to recover the chatbox position.
   if (!segs.length) {
     emptyReadCount++;
 
-    // Every ~5 seconds (20 * 250ms) let you know we're seeing nothing
     if (emptyReadCount % 20 === 0) {
       log("👀 No chat text detected in last " + emptyReadCount + " reads");
     }
 
-    // After ~10 seconds of nothing, try finding the chatbox again
+    // After ~10s (40 × 250ms) of empties, force a re-find of the chatbox
     if (emptyReadCount >= 40) {
       try {
-        log("🔁 Re-finding chatbox (no text detected for a while)...");
+        log("🔁 No chat text for a while, re-finding chatbox...");
+        // Clear the old position so Alt1 will search fresh
+        reader.pos = null;
         reader.find();
+
+        if (reader.pos && reader.pos.mainbox && reader.pos.mainbox.rect) {
+          log("✅ Chatbox re-found after empty reads");
+          try { showSelected(reader.pos); } catch {}
+        } else {
+          log("⚠️ reader.find() did not return a valid chatbox");
+        }
       } catch (e) {
         log("⚠️ reader.find() while recovering failed: " + (e?.message || e));
       }
