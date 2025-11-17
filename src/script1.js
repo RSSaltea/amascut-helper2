@@ -81,7 +81,9 @@ const VOICE_LINE_LABELS = {
   het: "Het (SW)",
   scabaras: "Scabaras (NE)",
   d2h: "P6 D2H Timer",
+  d2hAoE: "P6 AoE reminder",
 };
+
 
 let voiceLineConfig = {};
 try {
@@ -1077,13 +1079,12 @@ function onAmascutLine(full, lineId) {
   else if (raw.includes("Forgive me, Het")) key = "het";
   else if (/Scabaras\.\.\.(?!\s*Het\.\.\.\s*Bear witness!?)/i.test(raw)) key = "scabaras";
   else if (low.includes("i will not be subjugated by a mortal")) key = "d2h";
-  if (!key) return;
+if (!key) return;
 
-  // voice-line toggle: skip if disabled
-  if (!isVoiceLineEnabled(key)) {
-    log("🔇 Suppressed voice line: " + key);
-    return;
-  }
+if (key !== "d2h" && !isVoiceLineEnabled(key)) {
+  log("🔇 Suppressed voice line: " + key);
+  return;
+}
 
   // --- NEW: time-window dedupe instead of "ever seen" ---
   if (key !== "snuffed" && lineId) {
@@ -1137,20 +1138,34 @@ function onAmascutLine(full, lineId) {
   } else if (key === "tumeken") {
     log("💙 Tumeken's heart — starting Barricade timer");
     startBarricadeTimer();
-  } else if (key === "d2h") {
-    log("🗡 D2H line — starting D2H timer");
-    startD2HTimer();
+} else if (key === "d2h") {
+  // Two independent toggles:
+  const d2hTimerOn = isVoiceLineEnabled("d2h");      // P6 D2H Timer
+  const d2hAoeOn   = isVoiceLineEnabled("d2hAoE");   // P6 AoE reminder
 
-    // Disable click-in timer for the rest of this wave and clear its text
-    startSnuffedTimers._clickDisabled = true;
-    const rows = document.querySelectorAll("#spec tr");
-    if (rows[1]) {
-      const cell = rows[1].querySelector("td");
-      if (cell) cell.textContent = "";
-    }
+  if (!d2hTimerOn && !d2hAoeOn) {
+    log("🔇 Suppressed AoE Timer");
   } else {
-    updateUI(key);
+    if (d2hTimerOn) {
+      log("🗡 D2H line — starting D2H timer");
+      startD2HTimer();
+    } else {
+      log("🔇 D2H timer suppressed");
+    }
+
+    if (d2hAoeOn) {
+      showMessage("Threads / Gchain soon");
+    }
   }
+
+  startSnuffedTimers._clickDisabled = true;
+  const rows = document.querySelectorAll("#spec tr");
+  if (rows[1]) {
+    const cell = rows[1].querySelector("td");
+    if (cell) cell.textContent = "";
+  }
+} else {
+  updateUI(key);
 }
 
 function readChatbox() {
