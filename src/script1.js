@@ -19,41 +19,53 @@ if (window.alt1) {
   document.body.innerHTML = `Alt1 not detected, click <a href="alt1://addapp/${url}">here</a> to add this app.`;
 }
 
-// --- REPLACED: old seenLineIds / seenLineQueue ---
+/* ========= De-dupe tracking ========= */
 const seenLineTimes = new Map();
 
 function shouldIgnoreLine(lineId, windowMs = 5000) {
   const now = Date.now();
   const last = seenLineTimes.get(lineId) ?? 0;
 
-  // Ignore if this exact line was seen very recently
   if (now - last < windowMs) return true;
-
-  // Otherwise record it
   seenLineTimes.set(lineId, now);
 
-  // Light cleanup if things get big
   if (seenLineTimes.size > 400) {
-    const cutoff = now - 10 * 60 * 1000; // 10 minutes
+    const cutoff = now - 10 * 60 * 1000;
     for (const [id, ts] of seenLineTimes) {
       if (ts < cutoff) seenLineTimes.delete(id);
     }
   }
   return false;
 }
-// -------------------------------------------------
+/* ==================================== */
 
 let resetTimerId = null;
-let lastDisplayAt = 0; // for 10s window used by generic showMessage/updateUI
-let activeIntervals = []; // holds intervals for special timers so we can cancel them
-let activeTimeouts = [];  // holds timeouts for special timers so we can cancel them
+let lastDisplayAt = 0;      // for 10s window used by generic showMessage/updateUI
+let activeIntervals = [];   // holds intervals for special timers so we can cancel them
+let activeTimeouts = [];    // holds timeouts for special timers so we can cancel them
 
 /* =========================
    Global overlay preferences
    ========================= */
 let overlayScale = Number(localStorage.getItem("amascut.overlayScale") || "1");
 if (!(overlayScale >= 0.25 && overlayScale <= 2.0)) overlayScale = 1;
+
 let overlayEnabled = (localStorage.getItem("amascut.overlayEnabled") ?? "true") === "true";
+
+/* Logs visible global */
+let logsVisible = true;
+{
+  const saved = localStorage.getItem("amascut.logsVisible");
+  logsVisible = saved === null ? true : saved === "true";
+  document.body.classList.toggle("logs-hidden", !logsVisible);
+}
+
+/* Tick config: 0.6s (600) when "Tick" is ON, 0.1s (100) when OFF */
+let tickMs = 600;
+{
+  const saved = Number(localStorage.getItem("amascut.tickMs"));
+  if (saved === 100 || saved === 600) tickMs = saved;
+}
 
 /* NEW: persistent overlay position (top-left) */
 let overlayPos = null;
@@ -64,7 +76,7 @@ try {
   }
 } catch {}
 
-/* === Voice-line config (per-line toggles) === */
+/* === Voice-line config (toggles) === */
 const VOICE_LINE_LABELS = {
   // Group: solo calls
   soloGroup: "3 hit barrage",
@@ -72,17 +84,13 @@ const VOICE_LINE_LABELS = {
   // Group: spec order lines
   specGroup: "3 multi hit (base only)",
 
-  // Group: P7 calls
-  p7Call: "P7 Call",
-
   snuffed: "Swap timer + click timer",
   tear: "Scarabs",
-  bend: "Bend the Knee",
+  p7call: "P7 Call",
   tumeken: "P5 Barricade Timer",
   d2h: "P6 D2H Timer",
   d2hAoE: "P6 AoE reminder",
 };
-
 
 let voiceLineConfig = {};
 try {
@@ -109,9 +117,9 @@ function isVoiceLineEnabled(key) {
     return v !== false; // default ON
   }
 
-  // Group: P7 calls share one toggle
+  // Group: P7 god calls share "P7 Call"
   if (key === "crondis" || key === "apmeken" || key === "het" || key === "scabaras") {
-    const v = voiceLineConfig["p7Call"];
+    const v = voiceLineConfig["p7call"];
     return v !== false; // default ON
   }
 
@@ -120,19 +128,26 @@ function isVoiceLineEnabled(key) {
   return v !== false; // default ON
 }
 
-
 function setVoiceLineEnabled(key, enabled) {
   voiceLineConfig[key] = !!enabled;
-  try { localStorage.setItem("amascut.voiceLineConfig", JSON.stringify(voiceLineConfig)); } catch {}
+  try {
+    localStorage.setItem("amascut.voiceLineConfig", JSON.stringify(voiceLineConfig));
+  } catch {}
 }
 
 /* === Exposed helpers for the popup === */
+let posMode = false;
+let posRaf = 0;
+window.amascutOptsWin = null;  // reference to popup (if open)
+
 window.amascutGetState = function () {
   return {
     overlayScale,
     overlayEnabled,
     overlayPos,
     posMode,
+    tickMs,
+    logsVisible,
   };
 };
 
@@ -161,76 +176,27 @@ window.amascutGetVoiceMeta = function () {
 window.amascutSetVoiceEnabled = function (key, enabled) {
   setVoiceLineEnabled(key, enabled);
 };
+
+window.amascutSetLogsVisible = function (visible) {
+  logsVisible = !!visible;
+  document.body.classList.toggle("logs-hidden", !logsVisible);
+  try { localStorage.setItem("amascut.logsVisible", String(logsVisible)); } catch {}
+};
+
+window.amascutSetTickMode = function (slow) {
+  // slow=true  -> 0.6
+  // slow=false -> 0.1
+  tickMs = slow ? 600 : 100;
+  try { localStorage.setItem("amascut.tickMs", String(tickMs)); } catch {}
+
+  if (startSnuffedTimers._iv) {
+    try { clearInterval(startSnuffedTimers._iv); } catch {}
+    startSnuffedTimers._iv = makeSnuffedInterval();
+  }
+};
 /* ------------------------------------- */
 
-/* ---------- Logs toggle ---------- */
-(function injectLogsToggle(){
-  const style = document.createElement("style");
-  style.textContent = `
-    .ah-logs-toggle{position:fixed;top:6px;right:8px;z-index:11000;font-size:12px;opacity:.85;background:#222;
-      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 8px;line-height:1;color:#fff}
-    .ah-logs-toggle:hover{opacity:1}
-    .logs-hidden #output{display:none !important}
-  `;
-  document.head.appendChild(style);
-
-  const btn = document.createElement("button");
-  btn.className = "ah-logs-toggle";
-  btn.id = "ah-logs-toggle";
-  btn.textContent = "📝 Logs: On";
-  document.body.appendChild(btn);
-
-  const saved = localStorage.getItem("amascut.logsVisible");
-  const visible = saved === null ? true : saved === "true";
-  document.body.classList.toggle("logs-hidden", !visible);
-  btn.textContent = `📝 Logs: ${visible ? "On" : "Off"}`;
-
-  btn.addEventListener("click", () => {
-    const nowHidden = document.body.classList.toggle("logs-hidden");
-    const nowVisible = !nowHidden;
-    btn.textContent = `📝 Logs: ${nowVisible ? "On" : "Off"}`;
-    try { localStorage.setItem("amascut.logsVisible", String(nowVisible)); } catch {}
-  });
-})();
-
-/* ==== Tick configuration & toggle ==== */
-let tickMs = 600; // default 0.6s display tick
-
-(function injectTickToggle(){
-  const style = document.createElement("style");
-  style.textContent = `
-    .ah-tick-toggle{position:fixed;top:6px;left:8px;z-index:11000;font-size:12px;opacity:.85;background:#222;
-      border:1px solid #444;border-radius:4px;cursor:pointer;padding:4px 8px;line-height:1;margin-right:6px;color:#fff}
-    .ah-tick-toggle:hover{opacity:1}
-  `;
-  document.head.appendChild(style);
-
-  const btn = document.createElement("button");
-  btn.className = "ah-tick-toggle";
-  btn.id = "ah-tick-toggle";
-  const saved = Number(localStorage.getItem("amascut.tickMs"));
-  tickMs = (saved === 100 || saved === 600) ? saved : 600;
-  btn.textContent = `Tick/ms: ${tickMs}`;
-  document.body.appendChild(btn);
-
-  btn.addEventListener("click", () => {
-    tickMs = (tickMs === 600) ? 100 : 600;
-    btn.textContent = `Tick/ms: ${tickMs}`;
-    try { localStorage.setItem("amascut.tickMs", String(tickMs)); } catch {}
-    if (startSnuffedTimers._iv) {
-      try { clearInterval(startSnuffedTimers._iv); } catch {}
-      startSnuffedTimers._iv = makeSnuffedInterval();
-    }
-  });
-})();
-/* ============================================ */
-
 /* ===== Options POP-OUT window + bottom-right button + Set pos ===== */
-
-/* Global positioning state (used by main window + popup) */
-let posMode = false;
-let posRaf = 0;
-window.amascutOptsWin = null;  // reference to popup (if open)
 
 /* Start following the mouse to set overlay position */
 function startOverlayPosMode() {
@@ -274,7 +240,6 @@ function stopOverlayPosMode(saveNow = false) {
     log(`📍 Overlay position set to ${overlayPos.x}, ${overlayPos.y}`);
   }
 
-  // Tell popup to update its label/button
   if (window.amascutOptsWin && !window.amascutOptsWin.closed) {
     try {
       window.amascutOptsWin.postMessage(
@@ -319,7 +284,7 @@ function stopOverlayPosMode(saveNow = false) {
   });
 })();
 
-/* Create the bottom-right “Options” button and wire up the popup */
+/* Mini "Options" button bottom-right */
 (function injectOptionsPopupButton(){
   const style = document.createElement("style");
   style.textContent = `
@@ -363,7 +328,6 @@ function stopOverlayPosMode(saveNow = false) {
 
 /* Actually open the separate window and build the UI inside it */
 function openOptionsPopup() {
-  // Reuse existing window if still open
   if (window.amascutOptsWin && !window.amascutOptsWin.closed) {
     window.amascutOptsWin.focus();
     return;
@@ -380,7 +344,6 @@ function openOptionsPopup() {
   }
   window.amascutOptsWin = win;
 
-  // Basic HTML skeleton for the popup
   win.document.write(`
 <!DOCTYPE html>
 <html>
@@ -473,6 +436,18 @@ function openOptionsPopup() {
     <span id="opt-enable-state"></span>
   </div>
 
+  <div class="row">
+    <label for="opt-logs">Logs</label>
+    <input id="opt-logs" type="checkbox">
+    <span id="opt-logs-state"></span>
+  </div>
+
+  <div class="row">
+    <label for="opt-tick">Tick</label>
+    <input id="opt-tick" type="checkbox">
+    <span id="opt-tick-state"></span>
+  </div>
+
   <div class="btn-row">
     <button id="opt-set-pos" class="btn">Set pos</button>
   </div>
@@ -498,6 +473,10 @@ function openOptionsPopup() {
       const sizeVal = document.getElementById("opt-size-val");
       const enableCb = document.getElementById("opt-enable");
       const enableState = document.getElementById("opt-enable-state");
+      const logsCb = document.getElementById("opt-logs");
+      const logsState = document.getElementById("opt-logs-state");
+      const tickCb = document.getElementById("opt-tick");
+      const tickState = document.getElementById("opt-tick-state");
       const setPosBtn = document.getElementById("opt-set-pos");
       const posVal = document.getElementById("opt-pos-val");
       const closeBtn = document.getElementById("opt-close");
@@ -511,7 +490,9 @@ function openOptionsPopup() {
           overlayScale: parent.overlayScale || 1,
           overlayEnabled: !!parent.overlayEnabled,
           overlayPos: parent.overlayPos || null,
-          posMode: !!parent.posMode
+          posMode: !!parent.posMode,
+          tickMs: parent.tickMs || 600,
+          logsVisible: !parent.document.body.classList.contains("logs-hidden"),
         };
       }
 
@@ -570,7 +551,19 @@ function openOptionsPopup() {
 
         setPosBtn.textContent = st.posMode ? "Saving… (Alt+1)" : "Set pos";
 
-        // sync voice checkboxes with latest config
+        // Logs
+        const logsOn = typeof st.logsVisible === "boolean"
+          ? st.logsVisible
+          : !parent.document.body.classList.contains("logs-hidden");
+        logsCb.checked = logsOn;
+        logsState.textContent = logsOn ? "On" : "Off";
+
+        // Tick: checked = 0.6, unchecked = 0.1
+        const t = st.tickMs || parent.tickMs || 600;
+        const slow = t !== 100;
+        tickCb.checked = slow;
+        tickState.textContent = slow ? "0.6" : "0.1";
+
         if (voiceList && typeof parent.amascutGetVoiceMeta === "function") {
           const meta = parent.amascutGetVoiceMeta() || {};
           const cfg = meta.config || {};
@@ -585,7 +578,6 @@ function openOptionsPopup() {
       buildVoiceList();
       refreshFromParent();
 
-      // Slider -> real overlayScale via helper
       size.addEventListener("input", function () {
         var v = Number(size.value) || 1;
         if (typeof parent.amascutSetOverlayScale === "function") {
@@ -597,7 +589,6 @@ function openOptionsPopup() {
         sizeVal.textContent = v.toFixed(2) + "×";
       });
 
-      // Enable checkbox -> real overlayEnabled via helper
       enableCb.addEventListener("change", function () {
         var on = enableCb.checked;
         if (typeof parent.amascutSetOverlayEnabled === "function") {
@@ -610,7 +601,33 @@ function openOptionsPopup() {
         enableState.textContent = on ? "On" : "Off";
       });
 
-      // Set pos button: toggle position mode in parent
+      logsCb.addEventListener("change", function () {
+        var on = logsCb.checked;
+        if (typeof parent.amascutSetLogsVisible === "function") {
+          parent.amascutSetLogsVisible(on);
+        } else {
+          parent.document.body.classList.toggle("logs-hidden", !on);
+          try { parent.localStorage.setItem("amascut.logsVisible", String(on)); } catch (e) {}
+        }
+        logsState.textContent = on ? "On" : "Off";
+      });
+
+      // Tick checkbox (checked = 0.6, unchecked = 0.1)
+      tickCb.addEventListener("change", function () {
+        var slow = tickCb.checked;
+        if (typeof parent.amascutSetTickMode === "function") {
+          parent.amascutSetTickMode(slow);
+        } else {
+          parent.tickMs = slow ? 600 : 100;
+          try { parent.localStorage.setItem("amascut.tickMs", String(parent.tickMs)); } catch (e) {}
+          if (parent.startSnuffedTimers && parent.startSnuffedTimers._iv) {
+            try { clearInterval(parent.startSnuffedTimers._iv); } catch {}
+            parent.startSnuffedTimers._iv = parent.makeSnuffedInterval ? parent.makeSnuffedInterval() : null;
+          }
+        }
+        tickState.textContent = slow ? "0.6" : "0.1";
+      });
+
       setPosBtn.addEventListener("click", function () {
         var st = getState();
         if (!st.posMode) {
@@ -622,12 +639,10 @@ function openOptionsPopup() {
         }
       });
 
-      // Close button
       closeBtn.addEventListener("click", function () {
         window.close();
       });
 
-      // Listen for messages from parent (position saved via Alt+1)
       window.addEventListener("message", function (evt) {
         var d = evt.data;
         if (!d || d.source !== "amascutParent") return;
@@ -642,7 +657,6 @@ function openOptionsPopup() {
         }
       });
 
-      // Periodic refresh in case parent state changes elsewhere
       setInterval(refreshFromParent, 1000);
     })();
   </script>
@@ -765,6 +779,7 @@ function updateUI(key) {
   autoResetIn10s();
 }
 
+/* ===== Chatbox + parsing ===== */
 const reader = new Chatbox.default();
 const NAME_RGB = [69, 131, 145];
 const TEXT_RGB = [153, 255, 153];
@@ -811,7 +826,6 @@ function clearRow(i) {
   const cell = row.querySelector("td");
 
   if (i === 0) {
-    // Baseline row: keep the table alive with a single dot.
     if (cell) cell.textContent = ".";
     row.style.display = "table-row";
     row.classList.remove("callout", "flash", "role-range", "role-magic", "role-melee");
@@ -819,13 +833,12 @@ function clearRow(i) {
     return;
   }
 
-  // Normal behaviour for rows 1, 2, ...
   if (cell) cell.textContent = "";
   row.style.display = "none";
   row.classList.remove("selected", "callout", "flash", "role-range", "role-magic", "role-melee");
 }
 
-/* format with one decimal (e.g., 14.4 → 14.4, 0.05 → 0.0) */
+/* format with one decimal */
 function fmt(x) { return Math.max(0, x).toFixed(1); }
 
 let snuffStartAt = 0;
@@ -845,7 +858,7 @@ function stopBarricadeTimer(clearRowToo = true) {
     barricadeClearT = 0;
   }
   barricadeStartAt = 0;
-  if (clearRowToo) clearRow(2);   // row 2 used for Barricade
+  if (clearRowToo) clearRow(2);
 }
 
 function startBarricadeTimer() {
@@ -879,7 +892,6 @@ function startBarricadeTimer() {
     setRow(2, `Barricade: ${fmt(remaining)}s`);
   }, tickMs);
 }
-/* =============================== */
 
 /* ==== D2H timer state ==== */
 let d2hStartAt = 0;
@@ -896,7 +908,7 @@ function stopD2HTimer(clearRowToo = true) {
     d2hClearT = 0;
   }
   d2hStartAt = 0;
-  if (clearRowToo) clearRow(2);   // reuse row 2
+  if (clearRowToo) clearRow(2);
 }
 
 function startD2HTimer() {
@@ -930,7 +942,6 @@ function startD2HTimer() {
     setRow(2, `D2H in: ${fmt(remaining)}s`);
   }, tickMs);
 }
-/* ========================== */
 
 /* ====== Click-in-only clear helper (for "Take the path toward") ====== */
 function clearClickInTimerOnly() {
@@ -938,7 +949,6 @@ function clearClickInTimerOnly() {
   clearRow(1);
   log("⏹ Click in timer cleared on path selection");
 }
-/* ==================================================================== */
 
 /* ==== Shared interval builder for snuffed timers ==== */
 function makeSnuffedInterval() {
@@ -946,7 +956,7 @@ function makeSnuffedInterval() {
     try {
       const elapsed = (Date.now() - snuffStartAt) / 1000;
 
-      // --- Swap (14.4s one-shot) ---
+      // Swap (14.4s one-shot)
       const swapRemaining = 14.4 - elapsed;
       if (swapRemaining <= 0) {
         if (!startSnuffedTimers._swapFrozen) {
@@ -959,14 +969,13 @@ function makeSnuffedInterval() {
         setRow(0, `Swap side: ${fmt(swapRemaining)}s`);
       }
 
-      // --- Click-in (9.0s repeating) ---
+      // Click-in (9.0s repeating)
       const period = 9.0;
       if (!startSnuffedTimers._clickDisabled) {
         let clickRemaining = period - (elapsed % period);
         if (clickRemaining >= period - 1e-6) clickRemaining = 0;
         setRow(1, `Click in: ${fmt(clickRemaining)}s`);
       } else {
-        // ensure row is clear once disabled
         clearRow(1);
       }
     } catch (e) {
@@ -977,7 +986,6 @@ function makeSnuffedInterval() {
   activeIntervals.push(iv);
   return iv;
 }
-/* ==================================================== */
 
 function startSnuffedTimers() {
   clearActiveTimers();
@@ -1031,7 +1039,6 @@ function hardResetSession() {
 
   stopSnuffedTimersAndReset();
 }
-/* ==================================== */
 
 /* ==== Colored, auto-clearing solo messages ==== */
 function showSolo(role, cls) {
@@ -1056,8 +1063,8 @@ function showSolo(role, cls) {
   const t = setTimeout(() => { clearRow(0); }, 4000);
   activeTimeouts.push(t);
 }
-/* ======================================================= */
 
+/* ===== Main line handler ===== */
 function onAmascutLine(full, lineId) {
   if (/welcome to your session/i.test(full)) {
     hardResetSession();
@@ -1093,7 +1100,6 @@ function onAmascutLine(full, lineId) {
     return;
   }
 
-  // time-window dedupe
   if (key !== "snuffed" && lineId) {
     if (shouldIgnoreLine(lineId, 5000)) return;
   }
@@ -1106,7 +1112,6 @@ function onAmascutLine(full, lineId) {
     lastAt = now;
   }
 
-  // behaviour per key
   if (key === "snuffed") {
     if (snuffStartAt) {
       log("⚡ Snuffed out already active — ignoring duplicate");
@@ -1146,9 +1151,8 @@ function onAmascutLine(full, lineId) {
     log("💙 Tumeken's heart — starting Barricade timer");
     startBarricadeTimer();
   } else if (key === "d2h") {
-    // Two independent toggles:
-    const d2hTimerOn = isVoiceLineEnabled("d2h");    // P6 D2H Timer
-    const d2hAoeOn   = isVoiceLineEnabled("d2hAoE"); // P6 AoE reminder
+    const d2hTimerOn = isVoiceLineEnabled("d2h");
+    const d2hAoeOn   = isVoiceLineEnabled("d2hAoE");
 
     if (!d2hTimerOn && !d2hAoeOn) {
       log("🔇 Suppressed D2H effects (timer + AoE reminder)");
@@ -1165,7 +1169,6 @@ function onAmascutLine(full, lineId) {
       }
     }
 
-    // always disable click-in timer for this wave
     startSnuffedTimers._clickDisabled = true;
     const rows = document.querySelectorAll("#spec tr");
     if (rows[1]) {
@@ -1173,13 +1176,11 @@ function onAmascutLine(full, lineId) {
       if (cell) cell.textContent = "";
     }
   } else {
-    // grovel / weak / pathetic and anything else that maps to RESPONSES
     updateUI(key);
   }
 }
 
-//* --- *//
-
+/* ===== Periodic chat read ===== */
 function readChatbox() {
   let segs = [];
   try {
@@ -1189,8 +1190,6 @@ function readChatbox() {
     return;
   }
 
-  // How many empty reads before we refind the chatbox?
-  // 4 * 250ms ≈ 1s max delay instead of ~10s.
   const EMPTY_REFIND_THRESHOLD = 4;
 
   if (!segs.length) {
@@ -1203,7 +1202,7 @@ function readChatbox() {
     if (emptyReadCount >= EMPTY_REFIND_THRESHOLD) {
       try {
         log("🔁 No chat text for a bit, re-finding chatbox...");
-        reader.pos = null;   // force a fresh search
+        reader.pos = null;
         reader.find();
 
         if (reader.pos && reader.pos.mainbox && reader.pos.mainbox.rect) {
@@ -1220,7 +1219,6 @@ function readChatbox() {
     return;
   }
 
-  // We saw text again, reset the counter
   emptyReadCount = 0;
 
   for (let i = 0; i < segs.length; i++) {
@@ -1232,7 +1230,6 @@ function readChatbox() {
         continue;
       }
 
-      // Clear Click-in when path is chosen
       if (/take the path toward/i.test(seg.text)) {
         clearClickInTimerOnly();
         continue;
@@ -1419,7 +1416,6 @@ function renderLinesToCanvas(lines) {
   }
   return c;
 }
-/* ================================================================= */
 
 async function updateOverlayOnce() {
   try {
