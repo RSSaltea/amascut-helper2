@@ -1135,20 +1135,21 @@ function readChatbox() {
     return;
   }
 
-  // If we literally got nothing back, try to recover the chatbox position.
+  // How many empty reads before we refind the chatbox?
+  // 4 * 250ms ≈ 1s max delay instead of ~10s.
+  const EMPTY_REFIND_THRESHOLD = 4;
+
   if (!segs.length) {
     emptyReadCount++;
 
-    if (emptyReadCount % 20 === 0) {
+    if (emptyReadCount % 4 === 0) {
       log("👀 No chat text detected in last " + emptyReadCount + " reads");
     }
 
-    // After ~10s (40 × 250ms) of empties, force a re-find of the chatbox
-    if (emptyReadCount >= 40) {
+    if (emptyReadCount >= EMPTY_REFIND_THRESHOLD) {
       try {
-        log("🔁 No chat text for a while, re-finding chatbox...");
-        // Clear the old position so Alt1 will search fresh
-        reader.pos = null;
+        log("🔁 No chat text for a bit, re-finding chatbox...");
+        reader.pos = null;   // force a fresh search
         reader.find();
 
         if (reader.pos && reader.pos.mainbox && reader.pos.mainbox.rect) {
@@ -1177,7 +1178,7 @@ function readChatbox() {
         continue;
       }
 
-      // NEW: clear Click-in when path is chosen
+      // Clear Click-in when path is chosen
       if (/take the path toward/i.test(seg.text)) {
         clearClickInTimerOnly();
         continue;
