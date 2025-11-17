@@ -83,6 +83,7 @@ const VOICE_LINE_LABELS = {
   d2hAoE: "P6 AoE reminder",
 };
 
+
 let voiceLineConfig = {};
 try {
   const raw = localStorage.getItem("amascut.voiceLineConfig");
@@ -119,16 +120,13 @@ function isVoiceLineEnabled(key) {
   return v !== false; // default ON
 }
 
+
 function setVoiceLineEnabled(key, enabled) {
   voiceLineConfig[key] = !!enabled;
   try { localStorage.setItem("amascut.voiceLineConfig", JSON.stringify(voiceLineConfig)); } catch {}
 }
 
 /* === Exposed helpers for the popup === */
-let posMode = false;
-let posRaf = 0;
-window.amascutOptsWin = null;  // reference to popup (if open)
-
 window.amascutGetState = function () {
   return {
     overlayScale,
@@ -165,7 +163,7 @@ window.amascutSetVoiceEnabled = function (key, enabled) {
 };
 /* ------------------------------------- */
 
-/* ---------- Logs toggle (top-right button) ---------- */
+/* ---------- Logs toggle ---------- */
 (function injectLogsToggle(){
   const style = document.createElement("style");
   style.textContent = `
@@ -195,7 +193,7 @@ window.amascutSetVoiceEnabled = function (key, enabled) {
   });
 })();
 
-/* ==== Tick configuration & toggle (top-left button) ==== */
+/* ==== Tick configuration & toggle ==== */
 let tickMs = 600; // default 0.6s display tick
 
 (function injectTickToggle(){
@@ -212,12 +210,12 @@ let tickMs = 600; // default 0.6s display tick
   btn.id = "ah-tick-toggle";
   const saved = Number(localStorage.getItem("amascut.tickMs"));
   tickMs = (saved === 100 || saved === 600) ? saved : 600;
-  btn.textContent = `Tick: ${tickMs === 600 ? "0.6" : "0.1"}`;
+  btn.textContent = `Tick/ms: ${tickMs}`;
   document.body.appendChild(btn);
 
   btn.addEventListener("click", () => {
     tickMs = (tickMs === 600) ? 100 : 600;
-    btn.textContent = `Tick: ${tickMs === 600 ? "0.6" : "0.1"}`;
+    btn.textContent = `Tick/ms: ${tickMs}`;
     try { localStorage.setItem("amascut.tickMs", String(tickMs)); } catch {}
     if (startSnuffedTimers._iv) {
       try { clearInterval(startSnuffedTimers._iv); } catch {}
@@ -230,7 +228,9 @@ let tickMs = 600; // default 0.6s display tick
 /* ===== Options POP-OUT window + bottom-right button + Set pos ===== */
 
 /* Global positioning state (used by main window + popup) */
-// posMode + posRaf + amascutOptsWin already declared above
+let posMode = false;
+let posRaf = 0;
+window.amascutOptsWin = null;  // reference to popup (if open)
 
 /* Start following the mouse to set overlay position */
 function startOverlayPosMode() {
@@ -473,18 +473,6 @@ function openOptionsPopup() {
     <span id="opt-enable-state"></span>
   </div>
 
-  <div class="row">
-    <label for="opt-logs">Logs</label>
-    <input id="opt-logs" type="checkbox">
-    <span id="opt-logs-state"></span>
-  </div>
-
-  <div class="row">
-    <label for="opt-tick">Tick</label>
-    <input id="opt-tick" type="checkbox">
-    <span id="opt-tick-state"></span>
-  </div>
-
   <div class="btn-row">
     <button id="opt-set-pos" class="btn">Set pos</button>
   </div>
@@ -510,10 +498,6 @@ function openOptionsPopup() {
       const sizeVal = document.getElementById("opt-size-val");
       const enableCb = document.getElementById("opt-enable");
       const enableState = document.getElementById("opt-enable-state");
-      const logsCb = document.getElementById("opt-logs");
-      const logsState = document.getElementById("opt-logs-state");
-      const tickCb = document.getElementById("opt-tick");
-      const tickState = document.getElementById("opt-tick-state");
       const setPosBtn = document.getElementById("opt-set-pos");
       const posVal = document.getElementById("opt-pos-val");
       const closeBtn = document.getElementById("opt-close");
@@ -586,17 +570,6 @@ function openOptionsPopup() {
 
         setPosBtn.textContent = st.posMode ? "Saving… (Alt+1)" : "Set pos";
 
-        // Logs state from main window (logs-hidden class)
-        const logsOn = !parent.document.body.classList.contains("logs-hidden");
-        logsCb.checked = logsOn;
-        logsState.textContent = logsOn ? "On" : "Off";
-
-        // Tick state from main window (tickMs)
-        const t = parent.tickMs || 600;
-        const slow = (t === 600); // 0.6 vs 0.1
-        tickCb.checked = slow;
-        tickState.textContent = slow ? "0.6" : "0.1";
-
         // sync voice checkboxes with latest config
         if (voiceList && typeof parent.amascutGetVoiceMeta === "function") {
           const meta = parent.amascutGetVoiceMeta() || {};
@@ -635,24 +608,6 @@ function openOptionsPopup() {
           if (!on && parent.clearOverlayGroup) parent.clearOverlayGroup();
         }
         enableState.textContent = on ? "On" : "Off";
-      });
-
-      // Logs checkbox -> click the main logs button
-      logsCb.addEventListener("change", function () {
-        var btn = parent.document.getElementById("ah-logs-toggle");
-        if (btn) { btn.click(); }
-        var logsOn = !parent.document.body.classList.contains("logs-hidden");
-        logsState.textContent = logsOn ? "On" : "Off";
-      });
-
-      // Tick checkbox -> click the main tick button (0.6 / 0.1)
-      tickCb.addEventListener("change", function () {
-        var btn = parent.document.getElementById("ah-tick-toggle");
-        if (btn) { btn.click(); }
-        var t = parent.tickMs || 600;
-        var slow = (t === 600);
-        tickCb.checked = slow;
-        tickState.textContent = slow ? "0.6" : "0.1";
       });
 
       // Set pos button: toggle position mode in parent
