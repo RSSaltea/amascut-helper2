@@ -64,6 +64,46 @@ try {
   }
 } catch {}
 
+/* === Voice-line config (per-line toggles) === */
+const VOICE_LINE_LABELS = {
+  soloWeakMagic: "Solo – Your soul is weak (Magic)",
+  soloMelee:     "Solo – All strength withers (Melee)",
+  soloRange:     "Solo – I will not suffer this (Range)",
+  snuffed:       "Your light will be snuffed out (snuff timers)",
+  newdawn:       "A new dawn (reset timers)",
+  grovel:        "Grovel (Magic > Melee > Range)",
+  weak:          "Weak (Range > Magic > Melee)",
+  pathetic:      "Pathetic (Melee > Range > Magic)",
+  tear:          "\"Tear them apart\" (Scarabs + Bend)",
+  bend:          "\"Bend the knee\"",
+  tumeken:       "Tumeken's heart (Barricade timer)",
+  crondis:       "Crondis (SE)",
+  apmeken:       "Apmeken (NW)",
+  het:           "Het (SW)",
+  scabaras:      "Scabaras (NE)",
+  d2h:           "\"I will not be subjugated\" (D2H)",
+};
+
+let voiceLineConfig = {};
+try {
+  const raw = localStorage.getItem("amascut.voiceLineConfig");
+  if (raw) {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") voiceLineConfig = parsed;
+  }
+} catch {}
+
+function isVoiceLineEnabled(key) {
+  // default to enabled if not explicitly false
+  const v = voiceLineConfig[key];
+  return v !== false;
+}
+
+function setVoiceLineEnabled(key, enabled) {
+  voiceLineConfig[key] = !!enabled;
+  try { localStorage.setItem("amascut.voiceLineConfig", JSON.stringify(voiceLineConfig)); } catch {}
+}
+
 /* === Exposed helpers for the popup === */
 window.amascutGetState = function () {
   return {
@@ -87,6 +127,17 @@ window.amascutSetOverlayEnabled = function (enabled) {
 
 window.amascutIsPosMode = function () {
   return posMode;
+};
+
+window.amascutGetVoiceMeta = function () {
+  return {
+    config: voiceLineConfig,
+    labels: VOICE_LINE_LABELS,
+  };
+};
+
+window.amascutSetVoiceEnabled = function (key, enabled) {
+  setVoiceLineEnabled(key, enabled);
 };
 /* ------------------------------------- */
 
@@ -299,7 +350,7 @@ function openOptionsPopup() {
   const win = window.open(
     "",
     "AmascutOptions",
-    "width=360,height=260,resizable=yes"
+    "width=420,height=420,resizable=yes"
   );
   if (!win) {
     log("⚠️ Failed to open options popup (blocked by browser?).");
@@ -363,6 +414,23 @@ function openOptionsPopup() {
     flex-wrap:wrap;
     margin-top:6px;
   }
+  .voice-grid{
+    margin-top:4px;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    max-height:200px;
+    overflow-y:auto;
+    border:1px solid #333;
+    padding:4px;
+    border-radius:4px;
+  }
+  .voice-item{
+    display:flex;
+    align-items:center;
+    gap:4px;
+    font-size:11px;
+  }
 </style>
 </head>
 <body>
@@ -391,6 +459,11 @@ function openOptionsPopup() {
     <span id="opt-pos-val" class="small"></span>
   </div>
 
+  <hr style="margin:8px 0;border-color:#333;">
+
+  <div class="small">Voice line filters (uncheck to ignore):</div>
+  <div id="opt-voice-list" class="voice-grid"></div>
+
   <script>
     (function(){
       const parent = window.opener;
@@ -406,6 +479,7 @@ function openOptionsPopup() {
       const setPosBtn = document.getElementById("opt-set-pos");
       const posVal = document.getElementById("opt-pos-val");
       const closeBtn = document.getElementById("opt-close");
+      const voiceList = document.getElementById("opt-voice-list");
 
       function getState() {
         if (typeof parent.amascutGetState === "function") {
@@ -417,6 +491,43 @@ function openOptionsPopup() {
           overlayPos: parent.overlayPos || null,
           posMode: !!parent.posMode
         };
+      }
+
+      function buildVoiceList() {
+        if (!voiceList) return;
+        if (voiceList._built) return;
+        voiceList._built = true;
+
+        if (typeof parent.amascutGetVoiceMeta !== "function") return;
+        const meta = parent.amascutGetVoiceMeta() || {};
+        const labels = meta.labels || {};
+        const cfg = meta.config || {};
+
+        Object.keys(labels).forEach(function(key){
+          const label = labels[key];
+          const wrap = document.createElement("label");
+          wrap.className = "voice-item";
+
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.setAttribute("data-key", key);
+
+          const enabled = Object.prototype.hasOwnProperty.call(cfg, key) ? cfg[key] !== false : true;
+          cb.checked = enabled;
+
+          const span = document.createElement("span");
+          span.textContent = label;
+
+          wrap.appendChild(cb);
+          wrap.appendChild(span);
+          voiceList.appendChild(wrap);
+
+          cb.addEventListener("change", function(){
+            if (typeof parent.amascutSetVoiceEnabled === "function") {
+              parent.amascutSetVoiceEnabled(key, cb.checked);
+            }
+          });
+        });
       }
 
       function refreshFromParent(){
@@ -436,8 +547,20 @@ function openOptionsPopup() {
         }
 
         setPosBtn.textContent = st.posMode ? "Saving… (Alt+1)" : "Set pos";
+
+        // sync voice checkboxes with latest config
+        if (voiceList && typeof parent.amascutGetVoiceMeta === "function") {
+          const meta = parent.amascutGetVoiceMeta() || {};
+          const cfg = meta.config || {};
+          voiceList.querySelectorAll("input[data-key]").forEach(function(cb){
+            const k = cb.getAttribute("data-key");
+            const enabled = Object.prototype.hasOwnProperty.call(cfg, k) ? cfg[k] !== false : true;
+            cb.checked = enabled;
+          });
+        }
       }
 
+      buildVoiceList();
       refreshFromParent();
 
       // Slider -> real overlayScale via helper
@@ -927,6 +1050,12 @@ function onAmascutLine(full, lineId) {
   else if (/Scabaras\.\.\.(?!\s*Het\.\.\.\s*Bear witness!?)/i.test(raw)) key = "scabaras";
   else if (low.includes("i will not be subjugated by a mortal")) key = "d2h";
   if (!key) return;
+
+  // voice-line toggle: skip if disabled
+  if (!isVoiceLineEnabled(key)) {
+    log("🔇 Suppressed voice line: " + key);
+    return;
+  }
 
   // --- NEW: time-window dedupe instead of "ever seen" ---
   if (key !== "snuffed" && lineId) {
