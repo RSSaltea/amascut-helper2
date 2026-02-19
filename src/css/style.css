@@ -40,8 +40,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(4px, 2.5vw, 16px);
-  padding: clamp(6px, 3.1vw, 20px) clamp(8px, 3.75vw, 24px);
+  gap: 8px;
+  padding: 10px 12px;
   background: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
   border-bottom: 1px solid #21262d;
   position: relative;
@@ -59,7 +59,7 @@ body {
 
 .ah-title {
   font-family: 'rs-pro-3', 'Segoe UI', sans-serif;
-  font-size: clamp(12px, 5.3vw, 34px);
+  font-size: 17px;
   font-weight: 600;
   color: #e6dcd0;
   letter-spacing: 0.5px;
@@ -67,12 +67,12 @@ body {
 }
 
 .ah-version {
-  font-size: clamp(7px, 3.1vw, 20px);
+  font-size: 10px;
   color: #7d8590;
   background: #21262d;
   border: 1px solid #30363d;
   border-radius: 10px;
-  padding: 1px clamp(4px, 2.2vw, 14px);
+  padding: 1px 7px;
   font-weight: 500;
 }
 
@@ -80,17 +80,17 @@ body {
 .ah-status {
   display: flex;
   align-items: center;
-  gap: clamp(4px, 1.9vw, 12px);
-  padding: clamp(4px, 1.9vw, 12px) clamp(8px, 3.75vw, 24px);
+  gap: 6px;
+  padding: 6px 12px;
   background: #161b22;
   border-bottom: 1px solid #21262d;
-  font-size: clamp(8px, 3.4vw, 22px);
+  font-size: 11px;
   color: #7d8590;
 }
 
 .ah-status-dot {
-  width: clamp(4px, 1.9vw, 12px);
-  height: clamp(4px, 1.9vw, 12px);
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #f0883e;
   flex-shrink: 0;
@@ -210,8 +210,8 @@ body {
 .ah-controls {
   display: flex;
   align-items: center;
-  gap: clamp(2px, 1.25vw, 8px);
-  padding: clamp(4px, 1.9vw, 12px) clamp(6px, 2.5vw, 16px);
+  gap: 4px;
+  padding: 6px 8px;
   background: #161b22;
   border-top: 1px solid #21262d;
   border-bottom: 1px solid #21262d;
@@ -225,14 +225,14 @@ body {
 .ah-btn {
   display: inline-flex;
   align-items: center;
-  gap: clamp(2px, 1.25vw, 8px);
-  padding: clamp(3px, 1.25vw, 8px) clamp(6px, 3.1vw, 20px);
-  font-size: clamp(8px, 3.4vw, 22px);
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
   font-weight: 500;
   color: #c9d1d9;
   background: #21262d;
   border: 1px solid #30363d;
-  border-radius: clamp(4px, 1.9vw, 12px);
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
   line-height: 1.4;
@@ -256,7 +256,6 @@ body {
   color: #fff;
   font-weight: 600;
   text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-  border-radius: clamp(4px, 1.9vw, 12px);
 }
 
 .ah-btn-primary:hover {
@@ -279,8 +278,8 @@ body {
 
 
 .ah-logs {
-  padding: clamp(4px, 1.9vw, 12px) clamp(6px, 3.1vw, 20px);
-  font-size: clamp(7px, 3.1vw, 20px);
+  padding: 6px 10px;
+  font-size: 10px;
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   color: #7d8590;
   background: #010409;
