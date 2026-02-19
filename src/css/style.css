@@ -126,6 +126,7 @@ body {
 
 .ah-table td {
   text-align: center;
+  vertical-align: middle;
   padding: clamp(8px, 3.75vw, 24px) clamp(10px, 5vw, 32px);
   font-size: clamp(11px, 5vw, 32px);
   font-weight: 600;
@@ -301,6 +302,10 @@ body {
 
 body.logs-hidden .ah-logs {
   display: none !important;
+}
+
+body.logs-hidden .ah-table {
+  flex: 1;
 }
 
 
